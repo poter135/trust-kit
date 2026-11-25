@@ -7,13 +7,18 @@ import { getRunner } from '../runners/index.mjs';
 import { mergeBase, resolveCommit, showFile, withWorktree } from '../git.mjs';
 import { listChangedTests } from './changed-tests.mjs';
 import { judgeRedGreen, combineVerdicts } from './judge.mjs';
+import { loadRulesAt, newlyEnforcedIds, ruleEvidenceProblems } from '../rules.mjs';
 
 /**
  * @typedef {import('./judge.mjs').Verdict} Verdict
  * @typedef {{ schema: 'trust-kit/red-green@1', base: string, requestedBase: string, head: string, verdict: Verdict,
- *   runners: { id: string, tests: import('./judge.mjs').JudgedTest[] }[], generatedAt: string, ciRunUrl?: string }} RedGreenReport
+ *   runners: { id: string, tests: import('./judge.mjs').JudgedTest[] }[], newlyEnforced: string[],
+ *   ruleProblems?: { ruleId: string, problem: string }[], generatedAt: string, ciRunUrl?: string }} RedGreenReport
  *   `base` is the merge-base of the requested base and head (what was diffed and checked out);
  *   `requestedBase` is the resolved SHA the caller passed.
+ *   `newlyEnforced`: rule ids enforced in head's `.trust/rules.json` but not in base's. Each must be proven by its
+ *   check going behavior_fail → pass in this change; otherwise `ruleProblems` names it and the verdict becomes
+ *   invalid_red (head_fail stays head_fail).
  */
 
 const tail = (s, n = 2000) => (s.length > n ? `…${s.slice(-n)}` : s);
@@ -97,11 +102,18 @@ export async function runRedGreen({ repoRoot, base, head }) {
     verdicts.push(j.verdict);
   }
 
+  const headRules = await loadRulesAt(repoRoot, headSha);
+  const newlyEnforced = newlyEnforcedIds(await loadRulesAt(repoRoot, baseSha), headRules);
+  const ruleProblems = ruleEvidenceProblems({ ids: newlyEnforced, head: headRules, runners });
+  let verdict = combineVerdicts(verdicts);
+  if (ruleProblems.length > 0 && verdict !== 'head_fail') verdict = 'invalid_red';
+
   /** @type {RedGreenReport} */
   const report = {
-    schema: 'trust-kit/red-green@1', base: baseSha, requestedBase, head: headSha, verdict: combineVerdicts(verdicts),
-    runners, generatedAt: new Date().toISOString(),
+    schema: 'trust-kit/red-green@1', base: baseSha, requestedBase, head: headSha, verdict,
+    runners, newlyEnforced, generatedAt: new Date().toISOString(),
   };
+  if (ruleProblems.length > 0) report.ruleProblems = ruleProblems;
   const url = ciRunUrl();
   if (url) report.ciRunUrl = url;
   return report;

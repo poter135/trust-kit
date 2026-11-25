@@ -5,11 +5,15 @@ import path from 'node:path';
 import { loadConfig, TrustConfigError } from '../src/config.mjs';
 import { repoTopLevel } from '../src/git.mjs';
 import { runRedGreen } from '../src/redgreen/run.mjs';
+import { verifyRules, rulesReport, RulesError } from '../src/rules.mjs';
 
-/** Thrown for bad CLI input; printed without a stack, exit 1. */
-class UsageError extends Error {}
+/** Thrown for bad CLI input; printed without a stack, exit 1 (or `exitCode`). */
+class UsageError extends Error {
+  /** @param {string} msg @param {number} [exitCode] */
+  constructor(msg, exitCode = 1) { super(msg); this.exitCode = exitCode; }
+}
 
-/** @type {Record<string, { desc: string, run: (flags: Record<string, string|boolean>) => number|Promise<number> }>} */
+/** @type {Record<string, { desc: string, run: (flags: Record<string, string|boolean>, positional: string[]) => number|Promise<number> }>} */
 const SUBCOMMANDS = {
   config: {
     desc: 'validate trust.config.json and print the resolved config (--root <dir>, default cwd)',
@@ -36,24 +40,41 @@ const SUBCOMMANDS = {
       }
       const n = report.runners.reduce((a, r) => a + r.tests.length, 0);
       console.error(`red-green: ${report.verdict} (${n} test result(s), base ${report.base.slice(0, 12)}, head ${report.head.slice(0, 12)})`);
+      for (const p of report.ruleProblems ?? []) console.error(`  rule ${p.ruleId}: ${p.problem}`);
       return report.verdict === 'head_fail' ? 1 : 0;
+    },
+  },
+  rules: {
+    desc: 'rules registry (.trust/rules.json): `rules verify` checks every enforced rule (exit 1 on problems); `rules report` prints a markdown table (--root <dir>, default cwd)',
+    run(flags, positional) {
+      const root = typeof flags.root === 'string' ? flags.root : process.cwd();
+      const [action] = positional;
+      if (action === 'verify') {
+        const { ok, problems } = verifyRules({ repoRoot: root });
+        for (const p of problems) console.error(`✗ ${p.problem}\n  修正：${p.fix}`);
+        console.error(ok ? 'rules verify: ok' : `rules verify: ${problems.length} problem(s)`);
+        return ok ? 0 : 1;
+      }
+      if (action === 'report') { process.stdout.write(rulesReport({ repoRoot: root })); return 0; }
+      throw new UsageError(`rules: ${action ? `unknown action "${action}"` : 'missing action'}; use \`rules verify\` or \`rules report\``, 2);
     },
   },
 };
 
-/** @param {string[]} args */
-function parseFlags(args) {
+/** @param {string[]} args @returns {{ flags: Record<string, string|boolean>, positional: string[] }} */
+function parseArgs(args) {
   /** @type {Record<string, string|boolean>} */
   const flags = {};
+  const positional = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (!a.startsWith('--')) continue;
+    if (!a.startsWith('--')) { positional.push(a); continue; }
     const [k, v] = a.slice(2).split(/=(.*)/s, 2);
     if (v !== undefined) flags[k] = v;
     else if (args[i + 1] !== undefined && !args[i + 1].startsWith('--')) flags[k] = args[++i];
     else flags[k] = true;
   }
-  return flags;
+  return { flags, positional };
 }
 
 function usage() {
@@ -67,9 +88,11 @@ if (!sub || !Object.hasOwn(SUBCOMMANDS, sub)) {
   process.exit(2);
 }
 try {
-  process.exitCode = await SUBCOMMANDS[sub].run(parseFlags(rest));
+  const { flags, positional } = parseArgs(rest);
+  process.exitCode = await SUBCOMMANDS[sub].run(flags, positional);
 } catch (e) {
-  if (e instanceof TrustConfigError || e instanceof UsageError) { console.error(e.message); process.exit(1); }
+  if (e instanceof UsageError) { console.error(e.message); process.exit(e.exitCode); }
+  if (e instanceof TrustConfigError || e instanceof RulesError) { console.error(e.message); process.exit(1); }
   console.error(e instanceof Error ? (e.stack ?? e.message) : String(e));
   process.exit(1);
 }
