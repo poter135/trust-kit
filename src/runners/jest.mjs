@@ -12,7 +12,8 @@ import {
  * Classifies a Jest `--json` report.
  * - `assertionResults[].status === 'failed'` → `behavior_fail`; passed → `pass`; pending/todo/skipped → `skip`.
  * - A failed suite with no assertion results → one `load_fail` for the file (includes ts-jest type errors).
- * - A failed suite whose assertions all passed (e.g. afterAll threw) → an extra `(file)` `behavior_fail`.
+ * - A failed suite whose assertions all passed (e.g. afterAll threw) → an extra `(file)` `load_fail`
+ *   carrying the suite's error message (never `behavior_fail`: no test's behavior was shown to fail).
  * @param {any} json parsed Jest JSON report
  * @param {string} cwd repo root used to make Jest's absolute paths relative
  * @returns {TestResult[]}
@@ -38,7 +39,9 @@ export function parseJestJson(json, cwd) {
       } else out.push({ file, name, status: 'skip' });
     }
     if (suite.status === 'failed' && !anyFailed) {
-      out.push({ file, name: FILE_NAME, status: 'behavior_fail', message: suiteMessage });
+      // A suite-level error outside any test (hook, top-level code after tests were defined) is not
+      // evidence that a test's behavior failed, so it must never count as a valid red.
+      out.push({ file, name: FILE_NAME, status: 'load_fail', message: suiteMessage });
     }
   }
   return out;

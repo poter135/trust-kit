@@ -23,7 +23,7 @@ test('parseJestJson classifies recorded output; ts-jest type error is load_fail'
   assert.doesNotMatch(load.message, /\u001b\[/, 'ANSI colour codes are stripped');
 });
 
-test('parseJestJson: failed suite whose assertions all passed is a behavior_fail, pending/todo map to skip', () => {
+test('parseJestJson: failed suite whose assertions all passed is load_fail (never behavior_fail), pending/todo map to skip', () => {
   const json = { testResults: [{
     name: '/r/a.spec.ts', status: 'failed', message: 'afterAll threw',
     assertionResults: [
@@ -33,11 +33,12 @@ test('parseJestJson: failed suite whose assertions all passed is a behavior_fail
     ],
   }] };
   assert.deepEqual(brief(parseJestJson(json, '/r')), [
-    { file: 'a.spec.ts', name: '(file)', status: 'behavior_fail' },
+    { file: 'a.spec.ts', name: '(file)', status: 'load_fail' },
     { file: 'a.spec.ts', name: 'later', status: 'skip' },
     { file: 'a.spec.ts', name: 'ok', status: 'pass' },
     { file: 'a.spec.ts', name: 'skipped', status: 'skip' },
   ]);
+  assert.match(parseJestJson(json, '/r').find((r) => r.name === '(file)').message, /afterAll threw/);
 });
 
 const localJest = path.join(dir, 'node_modules', '.bin', 'jest');
@@ -65,4 +66,16 @@ test('jest runner: process failure with no JSON marks every file load_fail', asy
   });
   assert.deepEqual(brief(results), [{ file: rel('pass.spec.ts'), name: '(load)', status: 'load_fail' }]);
   assert.match(results[0].message, /jest crashed/);
+});
+
+test('jest runner: suite-level error after tests are defined is load_fail with the error text', {
+  skip: jestCommand ? false : `no Jest: run "npm install" in ${path.relative(repoRoot, dir)} or set TRUST_KIT_JEST_BIN`,
+}, async () => {
+  const results = await getRunner('jest').run({ cwd: dir, repoRoot, files: [rel('late.spec.ts')], command: jestCommand });
+  assert.deepEqual(brief(results), [
+    { file: rel('late.spec.ts'), name: '(file)', status: 'load_fail' },
+    { file: rel('late.spec.ts'), name: 'registered before the suite-level error', status: 'pass' },
+  ]);
+  assert.match(results.find((r) => r.name === '(file)').message, /suite-level boom after tests/);
+  assert.ok(!results.some((r) => r.status === 'behavior_fail'), 'must never look like a valid red');
 });

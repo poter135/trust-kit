@@ -16,8 +16,22 @@ function errorText(err) {
 
 /** @param {AsyncIterable<{ type: string, data: any }>} source */
 export default async function* trustKitReporter(source) {
+  // Errors caught outside any test (e.g. a top-level `await import()` failing after tests ran) arrive as
+  // test:diagnostic events without a `file`. A file's events are replayed in order and end with its
+  // test:summary (which has a `file`), so pending diagnostics are attributed to the next file summary.
+  // The run's final count diagnostics ("tests 3", ...) come after every file summary and are dropped.
+  let pendingDiagnostics = [];
   for await (const { type, data: d } of source) {
-    if (type === 'test:pass' || type === 'test:fail') {
+    if (type === 'test:diagnostic' && !d.file) {
+      pendingDiagnostics.push(String(d.message ?? ''));
+    } else if (type === 'test:summary' && d.file) {
+      for (const message of pendingDiagnostics) {
+        yield `${JSON.stringify({ type: 'diagnostic', file: absFile(d.file), message })}\n`;
+      }
+      pendingDiagnostics = [];
+    } else if (type === 'test:diagnostic' && d.file) {
+      yield `${JSON.stringify({ type: 'diagnostic', file: absFile(d.file), message: String(d.message ?? '') })}\n`;
+    } else if (type === 'test:pass' || type === 'test:fail') {
       yield `${JSON.stringify({
         type: type === 'test:pass' ? 'pass' : 'fail',
         name: d.name,

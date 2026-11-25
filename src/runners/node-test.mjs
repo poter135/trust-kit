@@ -13,7 +13,9 @@ const REPORTER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'node-t
  * Classifies node-test-reporter.mjs output.
  * - A file-level failure with no test results from that file → one `load_fail` for the file
  *   (the file never got as far as running a test: import/syntax errors, top-level throws).
- * - Any other failure → `behavior_fail`; skip/todo → `skip`.
+ * - A file-level failure after the file produced test results → an extra `(file)` `load_fail`.
+ * - A failing test → `behavior_fail`; skip/todo → `skip`.
+ * Messages for file-level results carry the file's stderr and error diagnostics.
  * - Suites, and parents failing only because a subtest failed, are not reported separately;
  *   nested tests are named `parent > child`.
  * @param {string[]} lines
@@ -31,7 +33,7 @@ export function parseNodeTestEvents(lines, root) {
     const ev = parseJsonLine(line);
     if (!ev || !ev.file) continue;
     const e = entry(ev.file);
-    if (ev.type === 'stderr') { e.stderr += ev.message ?? ''; continue; }
+    if (ev.type === 'stderr' || ev.type === 'diagnostic') { e.stderr += `${ev.message ?? ''}${ev.type === 'diagnostic' ? '\n' : ''}`; continue; }
     if (ev.type !== 'pass' && ev.type !== 'fail') continue;
     if (ev.isFile) {
       if (ev.type === 'fail') e.fileFail ??= ev;
@@ -63,7 +65,9 @@ export function parseNodeTestEvents(lines, root) {
     if (e.fileFail && !hadTests) {
       out.push({ file, name: LOAD_NAME, status: 'load_fail', message: clip(stripAnsi(e.stderr || e.fileFail.message || '')) });
     } else if (e.fileFail && e.fileFail.failureType !== 'subtestsFailed') {
-      out.push({ file, name: FILE_NAME, status: 'behavior_fail', message: clip(stripAnsi(e.stderr || e.fileFail.message || '')) });
+      // A file-level failure outside any test (e.g. a top-level `await import()` that throws after tests were
+      // registered) is not evidence that a test's behavior failed, so it must never count as a valid red.
+      out.push({ file, name: FILE_NAME, status: 'load_fail', message: clip(stripAnsi(e.stderr || e.fileFail.message || '')) });
     }
   }
   return out;

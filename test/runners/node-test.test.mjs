@@ -20,13 +20,13 @@ test('parseNodeTestEvents classifies recorded reporter output', () => {
   assert.match(load.message, /ERR_MODULE_NOT_FOUND|Cannot find module/);
 });
 
-test('parseNodeTestEvents: file-level failure with child results is not load_fail', () => {
+test('parseNodeTestEvents: file-level failure after child results is still load_fail, never behavior_fail', () => {
   const lines = [
     JSON.stringify({ type: 'pass', file: '/r/a.mjs', name: 'ok', isFile: false, nesting: 0 }),
     JSON.stringify({ type: 'fail', file: '/r/a.mjs', name: 'a.mjs', isFile: true, nesting: 0, failureType: 'testCodeFailure', message: 'exit 1' }),
   ];
   assert.deepEqual(brief(parseNodeTestEvents(lines, '/r')), [
-    { file: 'a.mjs', name: '(file)', status: 'behavior_fail' },
+    { file: 'a.mjs', name: '(file)', status: 'load_fail' },
     { file: 'a.mjs', name: 'ok', status: 'pass' },
   ]);
 });
@@ -65,4 +65,15 @@ test('node-test runner: process failure with no events marks every file load_fai
     command: [process.execPath, '-e', 'process.exit(3)', '--'],
   });
   assert.deepEqual(brief(results), [{ file: rel('pass.fx.mjs'), name: '(load)', status: 'load_fail' }]);
+});
+
+test('node-test runner: module-load failure after tests registered is load_fail with the error text', async () => {
+  const results = await getRunner('node-test').run({ cwd: dir, repoRoot, files: [rel('late-load.fx.mjs')] });
+  assert.deepEqual(brief(results), [
+    { file: rel('late-load.fx.mjs'), name: '(file)', status: 'load_fail' },
+    { file: rel('late-load.fx.mjs'), name: 'registered before the failing import', status: 'pass' },
+  ]);
+  const file = results.find((r) => r.name === '(file)');
+  assert.match(file.message, /ERR_MODULE_NOT_FOUND|Cannot find module/);
+  assert.ok(!results.some((r) => r.status === 'behavior_fail'), 'must never look like a valid red');
 });
