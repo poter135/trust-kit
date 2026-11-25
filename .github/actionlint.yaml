@@ -1,0 +1,7 @@
+# actionlint 1.7.12 does not yet know job.workflow_sha (documented by GitHub in the job context;
+# see https://docs.github.com/actions/reference/workflows-and-actions/contexts#job-context).
+# Ignore only that one message, only in red-green.yml.
+paths:
+  .github/workflows/red-green.yml:
+    ignore:
+      - 'property "workflow_sha" is not defined in object type'

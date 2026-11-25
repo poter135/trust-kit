@@ -1,6 +1,6 @@
 {
   "name": "trust-kit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Project-agnostic trust tooling: test-runner adapters, red/green evidence, review packets.",
   "type": "module",
   "bin": {

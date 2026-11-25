@@ -2,11 +2,12 @@
 # Caller:
 #   jobs:
 #     red-green:
-#       uses: poter135/trust-kit/.github/workflows/red-green.yml@v0.3.0
+#       uses: poter135/trust-kit/.github/workflows/red-green.yml@v0.3.1
 #       with:
 #         setup-command: npm ci --prefix functions
-# The trust-kit version that judges the PR is read from the caller's tools/trust-kit.version
-# (a tag or commit of poter135/trust-kit), not from the workflow ref.
+# The trust-kit version that judges the PR is read from tools/trust-kit.version at the PR's BASE commit
+# (a tag or commit of poter135/trust-kit). If base has no such file (first adoption), the commit of this
+# reusable workflow (job.workflow_sha) is used.
 name: trust-kit red-green
 
 on:
@@ -43,13 +44,39 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read trust-kit version
+      # The judge is chosen by the PR's BASE commit, never by the PR itself: a PR that edits
+      # tools/trust-kit.version cannot pick its own trust-kit. A version change only takes effect after merge.
+      - name: Read trust-kit version (from base)
         id: version
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
         run: |
           f=tools/trust-kit.version
-          if [ ! -f "$f" ]; then echo "::error file=$f::missing $f (put a trust-kit tag or commit in it)"; exit 1; fi
-          ref="$(tr -d '[:space:]' < "$f")"
-          if [ -z "$ref" ]; then echo "::error file=$f::$f is empty"; exit 1; fi
+          valid() { [[ "$1" =~ ^[A-Za-z0-9._/-]+$ ]]; }
+          : > trust-version-notes.txt
+          if base_raw="$(git show "$BASE_SHA:$f" 2>/dev/null)"; then
+            ref="$(printf '%s' "$base_raw" | tr -d '[:space:]')"
+            if [ -z "$ref" ]; then echo "::error file=$f::$f is empty on base $BASE_SHA"; exit 1; fi
+            if ! valid "$ref"; then echo "::error file=$f::$f on base $BASE_SHA is not a valid ref (allowed: A-Z a-z 0-9 . _ / -)"; exit 1; fi
+            if head_raw="$(git show "$HEAD_SHA:$f" 2>/dev/null)"; then
+              head_ref="$(printf '%s' "$head_raw" | tr -d '[:space:]')"
+              valid "$head_ref" || head_ref="(invalid ref)"
+            else
+              head_ref="(deleted)"
+            fi
+            if [ "$head_ref" != "$ref" ]; then
+              echo "trust-kit 版本變更：${ref} → ${head_ref}（本次以 base 版本判定）" >> trust-version-notes.txt
+            fi
+          else
+            if [ -z "$WORKFLOW_SHA" ] || ! valid "$WORKFLOW_SHA"; then
+              echo "::error::$f does not exist on base $BASE_SHA and job.workflow_sha is unavailable; cannot choose a trust-kit version"; exit 1
+            fi
+            ref="$WORKFLOW_SHA"
+            echo "首次接入：以 workflow 版本執行（${ref}）" >> trust-version-notes.txt
+          fi
+          echo "trust-kit ref: $ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
       - name: Check out trust-kit
@@ -123,6 +150,7 @@ jobs:
           import fs from 'node:fs';
           const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
           const out = ['## trust-kit red-green', ''];
+          for (const n of (read('trust-version-notes.txt') ?? '').split('\n').filter(Boolean)) out.push(`> ${n}`, '');
           const raw = read('red-green.json');
           let rep = null;
           try { rep = raw ? JSON.parse(raw) : null; } catch { rep = null; }
