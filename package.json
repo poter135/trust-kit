@@ -1,0 +1,20 @@
+{
+  "name": "trust-kit",
+  "version": "0.1.0",
+  "description": "Project-agnostic trust tooling: test-runner adapters, red/green evidence, review packets.",
+  "type": "module",
+  "bin": {
+    "trust-kit": "bin/trust-kit.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "picomatch": "^4.0.7"
+  }
+}

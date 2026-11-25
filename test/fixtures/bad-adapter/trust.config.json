@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "runners": [
+    { "id": "backend", "adapter": "mocha", "cwd": "server", "testGlobs": ["test/**/*.test.ts"] }
+  ],
+  "protectedPaths": [],
+  "evidence": { "outDir": ".trust/evidence", "screensDir": ".trust/screens" },
+  "ledger": { "path": ".trust/ledger.md" }
+}
