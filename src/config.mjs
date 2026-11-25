@@ -11,8 +11,10 @@ export const ALWAYS_PROTECTED = Object.freeze(['trust.config.json', 'tools/trust
  * @typedef {{ id: string, adapter: 'flutter'|'jest'|'node-test', cwd: string, testGlobs: string[], command?: string[], setup?: string[][] }} RunnerConfig
  *   `setup`: argv arrays run (no shell) in the runner's cwd of each temporary checkout before its tests,
  *   e.g. [["npm", "ci"]] — temporary checkouts have no installed dependencies.
- * @typedef {{ version: 1, runners: RunnerConfig[], protectedPaths: string[],
+ * @typedef {{ version: 1, runners: RunnerConfig[], protectedPaths: string[], defaultBranch: string,
  *   evidence: { outDir: string, screensDir: string }, ledger: { path: string } }} TrustConfig
+ *   `defaultBranch` (default "main"): review packets diff from the merge-base of head with this branch
+ *   (`origin/<defaultBranch>` when that remote-tracking ref exists, else the local branch).
  */
 
 export class TrustConfigError extends Error {
@@ -96,10 +98,13 @@ export function parseConfig(text, file) {
   if (!isObj(raw.evidence)) fail('evidence', 'must be an object', 'add "evidence": { "outDir": "...", "screensDir": "..." }');
   if (!isObj(raw.ledger)) fail('ledger', 'must be an object', 'add "ledger": { "path": "..." }');
 
+  const defaultBranch = raw.defaultBranch === undefined ? 'main' : str(raw.defaultBranch, 'defaultBranch');
+
   return {
     version: 1,
     runners,
     protectedPaths,
+    defaultBranch,
     evidence: { outDir: str(raw.evidence.outDir, 'evidence.outDir'), screensDir: str(raw.evidence.screensDir, 'evidence.screensDir') },
     ledger: { path: str(raw.ledger.path, 'ledger.path') },
   };

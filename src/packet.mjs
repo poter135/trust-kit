@@ -14,8 +14,9 @@ const short = (s) => String(s ?? '').slice(0, 12);
  * @typedef {{ n: number, item: string, kind: import('./items.mjs').Approval['kind']|null, target: string|null,
  *   commit: string, flagged: string[] }} PacketEntry
  *   `commit` is the packet head (git SHA). batch-write entries are flagged and not approvable in stage 1.
- * @typedef {{ id: string, markdown: string, entries: PacketEntry[] }} Packet
- * @typedef {{ id: string, entries: PacketEntry[], generatedAt: string, head: string }} PacketRecord
+ * @typedef {{ id: string, markdown: string, entries: PacketEntry[], base: string, baseRef: string|null, head: string }} Packet
+ * @typedef {{ id: string, entries: PacketEntry[], generatedAt: string, base: string, baseRef: string|null, head: string }} PacketRecord
+ *   `base` is the merge-base the protected-change check diffed from; `baseRef` the branch it was computed with.
  */
 
 /**
@@ -38,26 +39,30 @@ function itemFlags(item, ev, head, repoRoot) {
 
 /**
  * Builds the review packet. Pure apart from reading trust.config.json for the screenshots directory.
- * @param {{ repoRoot: string, head: string,
+ * `base` is shown in the markdown, so it is part of the packet id; base === head flags every entry, because then the
+ * packet shows no change at all (protected changes cannot be detected).
+ * @param {{ repoRoot: string, base: string, baseRef?: string|null, head: string,
  *   items: { item: import('./items.mjs').Item, evidence: import('./evidence.mjs').EvidenceBundle|null }[],
  *   protectedChanges: string[] }} opts
  *   `head` is the full commit every approval binds to; `evidence: null` means no bundle was found.
  * @returns {Packet}
  */
-export function buildPacket({ repoRoot, head, items, protectedChanges }) {
+export function buildPacket({ repoRoot, base, baseRef = null, head, items, protectedChanges }) {
+  if (typeof base !== 'string' || !/^[0-9a-f]{40}$/.test(base)) throw new Error(`buildPacket: base must be a full commit SHA, got ${JSON.stringify(base)}`);
   const screensDir = loadConfig(repoRoot).evidence.screensDir;
   const protectedFlag = protectedChanges.length > 0 ? [`驗證系統有改動：${protectedChanges.join('、')}`] : [];
+  const sameBase = base === head ? [`base 與 head 相同（${short(head)}）：這份審查包看不到任何改動，也偵測不到驗證系統改動。請在合併前從工作分支產生審查包`] : [];
 
   /** @type {PacketEntry[]} */
   const entries = [];
-  const attention = protectedChanges.map((p) => `- 驗證系統改動：\`${p}\``);
+  const attention = [...sameBase.map((f) => `- ${f}`), ...protectedChanges.map((p) => `- 驗證系統改動：\`${p}\``)];
   const blocks = [];
   for (const { item, evidence } of items) {
     const flags = itemFlags(item, evidence, head, repoRoot);
     const mine = [];
     for (const a of item.approvals.length > 0 ? item.approvals : [null]) {
       const e = { n: entries.length + 1, item: item.id, kind: a ? a.kind : null, target: a ? a.target : null,
-        commit: head, flagged: [...flags, ...protectedFlag, ...(a?.kind === 'batch-write' ? [BATCH_WRITE_UNSUPPORTED] : [])] };
+        commit: head, flagged: [...flags, ...sameBase, ...protectedFlag, ...(a?.kind === 'batch-write' ? [BATCH_WRITE_UNSUPPORTED] : [])] };
       entries.push(e);
       mine.push(e);
     }
@@ -86,20 +91,22 @@ export function buildPacket({ repoRoot, head, items, protectedChanges }) {
 
   const markdown = [
     '# 審查包', '', `head：\`${short(head)}\`（${head}）`, '',
+    `base：\`${short(base)}\`（${base}）${baseRef ? `＝ merge-base(${baseRef}, head)` : ''}，驗證系統改動從這裡比對`, '',
     '## 需要注意', '', ...(attention.length > 0 ? attention : ['- 無']), '',
     blocks.join('\n\n'), '',
   ].join('\n');
-  return { id: createHash('sha256').update(markdown).digest('hex').slice(0, 12), markdown, entries };
+  return { id: createHash('sha256').update(markdown).digest('hex').slice(0, 12), markdown, entries, base, baseRef, head };
 }
 
 /**
  * Writes `<out>` (markdown), `<out>.json` and `.trust/packets/<id>.json` (the copy `recordApproval` reads).
- * @param {{ repoRoot: string, packet: Packet, head: string, out: string }} opts
+ * @param {{ repoRoot: string, packet: Packet, out: string }} opts
  * @returns {PacketRecord}
  */
-export function writePacket({ repoRoot, packet, head, out }) {
+export function writePacket({ repoRoot, packet, out }) {
   /** @type {PacketRecord} */
-  const record = { id: packet.id, entries: packet.entries, generatedAt: new Date().toISOString(), head };
+  const record = { id: packet.id, entries: packet.entries, generatedAt: new Date().toISOString(),
+    base: packet.base, baseRef: packet.baseRef, head: packet.head };
   const json = `${JSON.stringify(record, null, 2)}\n`;
   const outAbs = path.resolve(repoRoot, out);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });

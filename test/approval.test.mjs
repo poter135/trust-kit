@@ -7,7 +7,7 @@ import path from 'node:path';
 import { makeRepo, commit, nodeTestConfig } from './redgreen/helpers.mjs';
 import { buildPacket, writePacket } from '../src/packet.mjs';
 import { recordApproval, checkApproval } from '../src/approval.mjs';
-import { mkItem, mkEvidence } from './packet-helpers.mjs';
+import { mkItem, mkEvidence, BASE } from './packet-helpers.mjs';
 
 const bin = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'trust-kit.mjs');
 const HEAD = 'a'.repeat(40);
@@ -19,9 +19,9 @@ function setup() {
   commit(dir, { 'trust.config.json': nodeTestConfig() });
   const b1 = mkItem('B1', [{ kind: 'deploy-function', target: 'fnA' }, { kind: 'hosting', target: 'web' }]);
   const b2 = mkItem('B2', [{ kind: 'batch-write', target: 'catalog' }]);
-  const p = buildPacket({ repoRoot: dir, head: HEAD, protectedChanges: [],
+  const p = buildPacket({ repoRoot: dir, base: BASE, head: HEAD, protectedChanges: [],
     items: [{ item: b1, evidence: mkEvidence(b1) }, { item: b2, evidence: null }] });
-  writePacket({ repoRoot: dir, packet: p, head: HEAD, out: path.join(dir, 'review.md') });
+  writePacket({ repoRoot: dir, packet: p, out: path.join(dir, 'review.md') });
   return { dir, p };
 }
 
@@ -106,4 +106,14 @@ test('CLI approve + check-approval: exit 0 on match, 1 on drift', () => {
   const bad = run('check-approval', '--kind', 'deploy-function', '--target', 'fnA', '--commit', OTHER);
   assert.equal(bad.status, 1);
   assert.ok(bad.stderr.includes(OTHER));
+});
+
+test('a packet record without a base (made by trust-kit before 0.4) cannot be approved', () => {
+  const { dir, p } = setup();
+  const file = path.join(dir, '.trust/packets', `${p.id}.json`);
+  const rec = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete rec.base;
+  fs.writeFileSync(file, JSON.stringify(rec));
+  assert.throws(() => recordApproval({ repoRoot: dir, packetId: p.id, numbers: [1] }), /base/);
+  assert.equal(fs.existsSync(path.join(dir, '.trust/approvals')), false);
 });

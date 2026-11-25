@@ -13,7 +13,7 @@ import { buildEvidence } from '../src/evidence.mjs';
 import { ItemError, loadItem, assertItemId } from '../src/items.mjs';
 import { buildPacket, writePacket } from '../src/packet.mjs';
 import { recordApproval, checkApproval, ApprovalError } from '../src/approval.mjs';
-import { resolveCommit } from '../src/git.mjs';
+import { resolveCommit, mergeBase, defaultBranchRef } from '../src/git.mjs';
 import { displayPath } from '../src/paths.mjs';
 
 /** Thrown for bad CLI input; printed without a stack, exit 1 (or `exitCode`). */
@@ -136,14 +136,23 @@ const SUBCOMMANDS = {
     },
   },
   packet: {
-    desc: 'build the review packet (--items B1,B2 --base <rev> [--head <rev>, default HEAD] --out <md>); also writes <md>.json and .trust/packets/<id>.json; prints the packet id',
+    desc: 'build the review packet (--items B1,B2 [--head <rev>, default HEAD] --out <md> [--base <rev>]); base is always the merge-base of head with the default branch (config defaultBranch, origin/<it> if present) and is recorded; a --base whose merge-base differs is refused; also writes <md>.json and .trust/packets/<id>.json; prints the packet id',
     async run(flags) {
-      for (const f of ['items', 'base', 'out']) {
+      for (const f of ['items', 'out']) {
         if (typeof flags[f] !== 'string') throw new UsageError(`packet: missing --${f}`);
       }
       const repoRoot = await repoTopLevel(process.cwd());
       const head = await resolveCommit(repoRoot, typeof flags.head === 'string' ? flags.head : 'HEAD');
-      const outDir = loadConfig(repoRoot).evidence.outDir;
+      const config = loadConfig(repoRoot);
+      const outDir = config.evidence.outDir;
+      const baseRef = await defaultBranchRef(repoRoot, config.defaultBranch);
+      const base = await mergeBase(repoRoot, await resolveCommit(repoRoot, baseRef), head);
+      if (typeof flags.base === 'string') {
+        const given = await mergeBase(repoRoot, await resolveCommit(repoRoot, flags.base), head);
+        if (given !== base) {
+          throw new UsageError(`packet: --base ${flags.base} gives merge-base ${given.slice(0, 12)}, but the review base must be the merge-base with ${baseRef} (${base.slice(0, 12)}); omit --base`);
+        }
+      }
       const ids = /** @type {string} */ (flags.items).split(',').map((s) => s.trim()).filter(Boolean);
       if (ids.length === 0) throw new UsageError('packet: --items is empty');
       const items = ids.map((id) => {
@@ -154,13 +163,13 @@ const SUBCOMMANDS = {
         try { evidence = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { evidence = null; }
         return { item, evidence };
       });
-      const protectedChanges = await detectProtectedChanges({ repoRoot, base: /** @type {string} */ (flags.base), head });
-      const packet = buildPacket({ repoRoot, head, items, protectedChanges });
+      const protectedChanges = await detectProtectedChanges({ repoRoot, base, head });
+      const packet = buildPacket({ repoRoot, base, baseRef, head, items, protectedChanges });
       const out = path.resolve(/** @type {string} */ (flags.out));
-      writePacket({ repoRoot, packet, head, out });
+      writePacket({ repoRoot, packet, out });
       const flagged = packet.entries.filter((e) => e.flagged.length > 0).length;
       console.log(packet.id);
-      console.error(`packet ${packet.id}: ${packet.entries.length} entr(ies), ${flagged} flagged, head ${head.slice(0, 12)} → ${displayPath(repoRoot, out)}`);
+      console.error(`packet ${packet.id}: ${packet.entries.length} entr(ies), ${flagged} flagged, base ${base.slice(0, 12)} (merge-base with ${baseRef}), head ${head.slice(0, 12)} → ${displayPath(repoRoot, out)}`);
       return 0;
     },
   },

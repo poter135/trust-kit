@@ -33,6 +33,21 @@ export async function mergeBase(repoRoot, a, b) {
 }
 
 /**
+ * The ref review packets diff against: `refs/remotes/origin/<branch>` when it exists (what the PR merges into),
+ * otherwise `refs/heads/<branch>`. Throws when neither exists.
+ * @param {string} repoRoot @param {string} branch @returns {Promise<string>} short ref name, e.g. "origin/main"
+ */
+export async function defaultBranchRef(repoRoot, branch) {
+  for (const [full, short] of [[`refs/remotes/origin/${branch}`, `origin/${branch}`], [`refs/heads/${branch}`, branch]]) {
+    try {
+      await git(repoRoot, ['rev-parse', '--verify', '--quiet', `${full}^{commit}`]);
+      return short;
+    } catch { /* try the next one */ }
+  }
+  throw new Error(`default branch "${branch}" not found (neither origin/${branch} nor ${branch} exists); fetch it or set "defaultBranch" in trust.config.json`);
+}
+
+/**
  * `git diff --name-status` between two revs. Renames are reported as a delete plus an add.
  * @param {string} repoRoot @param {string} base @param {string} head
  * @returns {Promise<{ status: string, path: string }[]>} status is git's letter (A, M, D, T, …)

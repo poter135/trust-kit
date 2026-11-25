@@ -32,6 +32,9 @@ export function recordApproval({ repoRoot, packetId, numbers, allowFlagged = fal
   try { packet = readJson(packetFile); } catch (e) {
     throw new ApprovalError(`找不到審查包 ${packetId}（${displayPath(repoRoot, packetFile)}：${e.code ?? e.message}）。請先執行 trust-kit packet`);
   }
+  if (typeof packet.base !== 'string' || !/^[0-9a-f]{40}$/.test(packet.base)) {
+    throw new ApprovalError(`審查包 ${packetId} 沒有記錄 base（舊版 trust-kit 產生），看不出驗證系統改動是從哪裡比對的。請用目前的 trust-kit 重新產生審查包`);
+  }
   if (!Array.isArray(numbers) || numbers.length === 0) throw new ApprovalError('沒有指定要核准的編號');
   const now = new Date().toISOString();
   const picked = [];
