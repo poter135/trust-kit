@@ -269,8 +269,15 @@ test('ruleEvidenceProblems: the red→green row must be the rule\'s own check.te
   assert.equal(problems.length, 1, 'another test going red→green must not prove the rule');
   assert.match(problems[0].problem, /refuses delete/);
 
-  for (const name of ['refuses delete', 'suite > refuses delete', 'describe block refuses delete']) {
+  for (const name of ['refuses delete', 'suite > refuses delete', 'describe block > refuses delete']) {
     const own = [{ id: 'unit', tests: [{ file, name, base: 'behavior_fail', head: 'pass' }] }];
     assert.deepEqual(ruleEvidenceProblems({ ids: ['no-delete'], head, runners: own }), [], name);
   }
+});
+
+test('ruleEvidenceProblems: a sibling whose name only ends with the same words does not prove the rule', () => {
+  const head = { version: 1, rules: [RULE] };
+  const file = RULE.check.file;
+  const runners = [{ id: 'unit', tests: [{ file, name: 'never refuses delete', base: 'behavior_fail', head: 'pass' }] }];
+  assert.equal(ruleEvidenceProblems({ ids: ['no-delete'], head, runners }).length, 1);
 });

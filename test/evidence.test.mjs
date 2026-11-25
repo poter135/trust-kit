@@ -8,6 +8,7 @@ import { makeRepo, commit, writeFiles, nodeTestConfig, git } from './redgreen/he
 import { buildEvidence } from '../src/evidence.mjs';
 import { loadItem } from '../src/items.mjs';
 import { collectScreens } from '../src/screens.mjs';
+import { SLUG, RUN_ID, RUN_URL, mkRun, mkJobs, fakeGithub, fakeGhEnv } from './fake-gh.mjs';
 
 const bin = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'trust-kit.mjs');
 
@@ -16,10 +17,6 @@ const item = (surfaces, id = 'fix-login', extra = {}) => JSON.stringify({
   id, title: 'Fix login', surfaces, acceptance: ['login works'], approvals: [{ kind: 'hosting', target: 'web' }],
   tests: [TEST], ...extra,
 });
-const SLUG = 'acme/app';
-const RUN_ID = '4242';
-const RUN_URL = `https://github.com/${SLUG}/actions/runs/${RUN_ID}`;
-
 /** Repo with config + items and an `origin` on GitHub; returns { dir, sha }. */
 function setup() {
   const dir = makeRepo();
@@ -39,33 +36,10 @@ const report = (head, extra = {}) => ({
   verdict: 'valid_red', runners: [{ id: 'unit', tests: [row('behavior_fail', 'pass')] }], newlyEnforced: [],
   generatedAt: '2026-11-25T00:00:00Z', ciRunUrl: RUN_URL, ...extra,
 });
-const run = (sha, extra = {}) => ({
-  id: Number(RUN_ID), html_url: RUN_URL, head_sha: sha, status: 'completed', conclusion: 'success',
-  event: 'pull_request', repository: { full_name: SLUG }, ...extra,
-});
+const run = mkRun;
 
-/**
- * Fake GitHub client: what `gh` would return for RUN_ID. `rep` null = the run has no trust-red-green artifact.
- * @param {{ run?: any, rep?: any, runError?: string }} o
- */
-function fakeGithub({ run: r, rep, runError }) {
-  return {
-    async getRun(slug, id) {
-      if (runError) throw new Error(runError);
-      assert.equal(slug, SLUG);
-      assert.equal(String(id), RUN_ID);
-      return r;
-    },
-    async downloadRedGreen(slug, id, destDir) {
-      assert.equal(slug, SLUG);
-      if (rep === null) throw new Error('no artifact matches any of the names or patterns provided');
-      fs.mkdirSync(destDir, { recursive: true });
-      fs.writeFileSync(path.join(destDir, 'red-green.json'), typeof rep === 'string' ? rep : JSON.stringify(rep));
-    },
-  };
-}
 /** buildEvidence options for a CI run serving `rep`. */
-const ci = (sha, rep, runExtra = {}) => ({ runId: RUN_ID, github: fakeGithub({ run: run(sha, runExtra), rep }) });
+const ci = (sha, rep, runExtra = {}, jobs = undefined) => ({ runId: RUN_ID, github: fakeGithub({ run: run(sha, runExtra), rep, jobs }) });
 
 function writeScreens(dir, sha) {
   const sd = path.join(dir, 'shots');
@@ -81,7 +55,7 @@ test('report from a CI run of this repo and commit + item test red→green + scr
   assert.equal(b.complete, true, b.missing.join('\n'));
   assert.deepEqual(b.missing, []);
   assert.equal(b.commit, sha);
-  assert.deepEqual(b.redGreen, { verdict: 'valid_red', ciRunUrl: RUN_URL, runId: RUN_ID, repo: SLUG, head: sha });
+  assert.deepEqual(b.redGreen, { verdict: 'valid_red', ciRunUrl: RUN_URL, runId: RUN_ID, repo: SLUG, head: sha, base: 'b'.repeat(40) });
   assert.deepEqual(b.tests, [{ ...TEST, base: 'behavior_fail', head: 'pass', ok: true }]);
   assert.equal(b.screens.files.length, 1);
   assert.equal(b.item.id, 'fix-login');
@@ -127,6 +101,17 @@ test('the CI run belongs to another repository → incomplete', async () => {
   const b = await buildEvidence({ repoRoot: dir, itemId: 'backend', commit: sha, ...ci(sha, report(sha), { repository: { full_name: 'evil/fork' } }) });
   assert.equal(b.complete, false);
   assert.ok(b.missing.some((s) => s.includes('evil/fork')), b.missing.join('\n'));
+});
+
+test('the red-green job of the run did not succeed (e.g. ledger verify failed) → incomplete; other failing jobs do not matter', async () => {
+  const { dir, sha } = setup();
+  for (const jobs of [mkJobs('failure'), [mkJobs()[1]]]) {
+    const b = await buildEvidence({ repoRoot: dir, itemId: 'backend', commit: sha, ...ci(sha, report(sha), {}, jobs) });
+    assert.equal(b.complete, false, JSON.stringify(jobs));
+    assert.ok(b.missing.some((s) => s.includes('red-green')), b.missing.join('\n'));
+  }
+  const ok = await buildEvidence({ repoRoot: dir, itemId: 'backend', commit: sha, ...ci(sha, report(sha)) });
+  assert.equal(ok.complete, true, ok.missing.join('\n'));
 });
 
 test('the CI run has not completed, or is not a pull_request run → incomplete', async () => {
@@ -209,6 +194,35 @@ test('I6: an item that names no tests is never complete', async () => {
   assert.ok(b.missing.some((s) => s.includes('tests')), b.missing.join('\n'));
 });
 
+test('I6: a sibling test whose name merely ends with the same words does not prove the item', async () => {
+  const { dir, sha } = setup();
+  const rep = report(sha, { runners: [{ id: 'unit', tests: [
+    row('pass', 'pass'),
+    { file: TEST.file, name: `legacy path ${TEST.testName}`, base: 'behavior_fail', head: 'pass' },
+  ] }] });
+  const b = await buildEvidence({ repoRoot: dir, itemId: 'backend', commit: sha, ...ci(sha, rep) });
+  assert.equal(b.complete, false);
+  assert.equal(b.tests[0].ok, false);
+});
+
+test('I6: a testName that matches more than one row is ambiguous → not ok', async () => {
+  const { dir, sha } = setup();
+  const rep = report(sha, { runners: [{ id: 'unit', tests: [
+    { file: TEST.file, name: `a > ${TEST.testName}`, base: 'behavior_fail', head: 'pass' },
+    { file: TEST.file, name: `b > ${TEST.testName}`, base: 'pass', head: 'pass' },
+  ] }] });
+  const b = await buildEvidence({ repoRoot: dir, itemId: 'backend', commit: sha, ...ci(sha, rep) });
+  assert.equal(b.complete, false);
+  assert.ok(b.missing.some((s) => s.includes('2')), b.missing.join('\n'));
+});
+
+test('the bundle records the report base and a repo-relative screens dir (packet re-verifies with them)', async () => {
+  const { dir, sha } = setup();
+  const b = await buildEvidence({ repoRoot: dir, itemId: 'fix-login', commit: sha, ...ci(sha, report(sha)), screensDir: writeScreens(dir, sha) });
+  assert.equal(b.redGreen.base, 'b'.repeat(40));
+  assert.equal(b.screensDir, 'shots');
+});
+
 test('I6: a nested test name matches its leaf testName', async () => {
   const { dir, sha } = setup();
   const rep = report(sha, { runners: [{ id: 'unit', tests: [{ file: TEST.file, name: `login > ${TEST.testName}`, base: 'behavior_fail', head: 'pass' }] }] });
@@ -278,26 +292,7 @@ test('loadItem: tests are optional but must be { runnerId, file, testName } when
   assert.throws(() => loadItem(dir, 'bad3'), /tests/);
 });
 
-/** Directory with a fake `gh` that serves RUN_ID from files named by FAKE_GH_RUN / FAKE_GH_REPORT. */
-function fakeGhBin(dir, sha, rep) {
-  const bin = path.join(dir, '..', `fakebin-${path.basename(dir)}`);
-  fs.mkdirSync(bin, { recursive: true });
-  fs.writeFileSync(path.join(bin, 'run.json'), JSON.stringify(run(sha)));
-  fs.writeFileSync(path.join(bin, 'report.json'), JSON.stringify(rep));
-  const gh = path.join(bin, 'gh');
-  fs.writeFileSync(gh, `#!${process.execPath}
-const fs = require('node:fs'); const path = require('node:path');
-const a = process.argv.slice(2);
-if (a[0] === 'api' && a[1] === 'repos/${SLUG}/actions/runs/${RUN_ID}') { process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(bin, 'run.json'))}, 'utf8')); process.exit(0); }
-if (a[0] === 'run' && a[1] === 'download' && a[2] === '${RUN_ID}') {
-  const d = a[a.indexOf('-D') + 1]; fs.mkdirSync(d, { recursive: true });
-  fs.copyFileSync(${JSON.stringify(path.join(bin, 'report.json'))}, path.join(d, 'red-green.json')); process.exit(0);
-}
-process.stderr.write('fake gh: unexpected ' + a.join(' ')); process.exit(1);
-`);
-  fs.chmodSync(gh, 0o755);
-  return { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
-}
+const fakeGhBin = (dir, sha, rep) => fakeGhEnv(dir, { run: run(sha), rep });
 
 test('CLI: evidence --run fetches the run and artifact through gh; exits 1 with missing lines; screens collect writes manifest', () => {
   const { dir, sha } = setup();

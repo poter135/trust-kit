@@ -173,8 +173,13 @@ export function ruleEvidenceProblems({ ids, head, runners }) {
     const rows = (runners.find((r) => r.id === runnerId)?.tests ?? []).filter((t) => t.file === file);
     if (rows.length === 0) {
       out.push({ ruleId: id, problem: `rule "${id}" became enforced but its check ${file} (runner ${runnerId}) is not among the changed tests` });
-    } else if (!rows.some((t) => matchesTestName(t.name, testName) && isRedToGreen(t))) {
-      out.push({ ruleId: id, problem: `rule "${id}" became enforced but its check test ${JSON.stringify(testName)} in ${file} did not fail on base by behavior and pass on head` });
+    } else {
+      const mine = rows.filter((t) => matchesTestName(t.name, testName));
+      if (mine.length > 1) {
+        out.push({ ruleId: id, problem: `rule "${id}": check test name ${JSON.stringify(testName)} matches ${mine.length} tests in ${file}; use the full name` });
+      } else if (!mine.some(isRedToGreen)) {
+        out.push({ ruleId: id, problem: `rule "${id}" became enforced but its check test ${JSON.stringify(testName)} in ${file} did not fail on base by behavior and pass on head` });
+      }
     }
   }
   return out;

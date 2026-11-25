@@ -9,7 +9,8 @@ export const RED_GREEN_ARTIFACT = 'trust-red-green';
 /**
  * @typedef {{ id: number, html_url: string, head_sha: string, status: string, conclusion: string|null, event: string,
  *   repository?: { full_name?: string } }} WorkflowRun
- * @typedef {{ getRun(slug: string, runId: string): Promise<WorkflowRun>,
+ * @typedef {{ name: string, status: string, conclusion: string|null }} WorkflowJob
+ * @typedef {{ getRun(slug: string, runId: string): Promise<WorkflowRun>, getJobs(slug: string, runId: string): Promise<WorkflowJob[]>,
  *   downloadRedGreen(slug: string, runId: string, destDir: string): Promise<void> }} GithubClient
  */
 
@@ -19,8 +20,11 @@ export const RED_GREEN_ARTIFACT = 'trust-red-green';
  */
 export function parseGithubSlug(url) {
   const m = String(url).trim().match(/^(?:https:\/\/(?:[^@/]+@)?github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/);
-  return m ? `${m[1]}/${m[2]}` : null;
+  return m && validParts(m[1], m[2]) ? `${m[1]}/${m[2]}` : null;
 }
+
+/** Owner and repo must not be made only of dots ("." / ".." would walk the API path). */
+const validParts = (...parts) => parts.every((p) => !/^\.+$/.test(p));
 
 /**
  * `owner/repo` of the repo's `origin` remote. Throws when there is no origin or it is not on github.com.
@@ -46,8 +50,15 @@ export function parseRunRef(input) {
   const s = String(input ?? '').trim();
   if (/^[1-9]\d*$/.test(s)) return { runId: s, slug: null };
   const m = s.match(/^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/actions\/runs\/([1-9]\d*)(?:[/?#].*)?$/);
-  return m ? { runId: m[3], slug: `${m[1]}/${m[2]}` } : null;
+  return m && validParts(m[1], m[2]) ? { runId: m[3], slug: `${m[1]}/${m[2]}` } : null;
 }
+
+/**
+ * The red-green job of a run: named `red-green` (trust-kit's own workflow) or `<caller job> / red-green` (the
+ * reusable workflow called from another repo).
+ * @param {WorkflowJob[]} jobs
+ */
+export const redGreenJobs = (jobs) => (Array.isArray(jobs) ? jobs : []).filter((j) => j?.name === 'red-green' || String(j?.name).endsWith(' / red-green'));
 
 /** @param {string[]} args @returns {Promise<string>} */
 function gh(args) {
@@ -63,6 +74,9 @@ function gh(args) {
 export const ghClient = {
   async getRun(slug, runId) {
     return JSON.parse(await gh(['api', `repos/${slug}/actions/runs/${runId}`]));
+  },
+  async getJobs(slug, runId) {
+    return JSON.parse(await gh(['api', `repos/${slug}/actions/runs/${runId}/jobs?per_page=100`])).jobs ?? [];
   },
   async downloadRedGreen(slug, runId, destDir) {
     await gh(['run', 'download', runId, '-R', slug, '-n', RED_GREEN_ARTIFACT, '-D', destDir]);

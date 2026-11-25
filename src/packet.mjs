@@ -26,7 +26,7 @@ const short = (s) => String(s ?? '').slice(0, 12);
  * @param {string} repoRoot absolute paths under it in old bundles' `missing` are shown repo-relative
  * @returns {string[]}
  */
-function itemFlags(item, ev, head, repoRoot) {
+function itemFlags(item, ev, head, base, repoRoot) {
   const out = [];
   if (!Array.isArray(item.tests) || item.tests.length === 0) {
     out.push(`項目沒有列出證明它的測試（tests）：無法確認這個項目自己有紅燈。請在 .trust/items/${item.id}.json 加上 tests 後重跑 evidence`);
@@ -34,6 +34,9 @@ function itemFlags(item, ev, head, repoRoot) {
   if (!ev) return [...out, `沒有證據包，請先執行 trust-kit evidence --item ${item.id} --run <CI run>`];
   if (ev.schema !== EVIDENCE_SCHEMA) {
     out.push(`證據包格式是 ${JSON.stringify(ev.schema)}，不是 ${EVIDENCE_SCHEMA}：舊版沒有從 CI run 下載紅綠燈、也沒有逐項檢查測試。請用目前的 trust-kit 重跑 evidence --run`);
+  }
+  if (typeof ev.redGreen?.base === 'string' && ev.redGreen.base !== base) {
+    out.push(`紅綠燈的 base（${short(ev.redGreen.base)}）不是審查包的 base（${short(base)}）：CI 是對另一個分支判定的（例如疊在別的 PR 上），紅燈不代表對預設分支的改動。請在 PR 改以預設分支為 base 後重跑 CI 與 evidence`);
   }
   if (ev.commit !== head) out.push(`證據包是舊 commit 的：證據包 commit=${short(ev.commit)}，審查包 head=${short(head)}。請在目前 commit 重新執行 trust-kit evidence --item ${item.id}`);
   if (ev.redGreen?.verdict !== 'valid_red') out.push(`紅綠燈判定不是 valid_red：${ev.redGreen?.verdict ?? '（沒有判定）'}`);
@@ -65,7 +68,7 @@ export function buildPacket({ repoRoot, base, baseRef = null, head, items, prote
   const attention = [...sameBase.map((f) => `- ${f}`), ...protectedChanges.map((p) => `- 驗證系統改動：\`${p}\``)];
   const blocks = [];
   for (const { item, evidence } of items) {
-    const flags = itemFlags(item, evidence, head, repoRoot);
+    const flags = itemFlags(item, evidence, head, base, repoRoot);
     const mine = [];
     for (const a of item.approvals.length > 0 ? item.approvals : [null]) {
       const e = { n: entries.length + 1, item: item.id, kind: a ? a.kind : null, target: a ? a.target : null,

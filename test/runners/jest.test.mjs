@@ -23,6 +23,13 @@ test('parseJestJson classifies recorded output; ts-jest type error is load_fail'
   assert.doesNotMatch(load.message, /\u001b\[/, 'ANSI colour codes are stripped');
 });
 
+test('parseJestJson: nested names are ancestorTitles and title joined with " > " (same form as node:test)', () => {
+  const json = { testResults: [{ name: '/r/a.spec.ts', status: 'passed', assertionResults: [
+    { fullName: 'outer inner works', ancestorTitles: ['outer', 'inner'], title: 'works', status: 'passed', failureMessages: [] },
+  ] }] };
+  assert.deepEqual(brief(parseJestJson(json, '/r')), [{ file: 'a.spec.ts', name: 'outer > inner > works', status: 'pass' }]);
+});
+
 test('parseJestJson: a test that fails because a module cannot be found is load_fail, not behavior_fail', () => {
   const json = { testResults: [{
     name: '/r/a.spec.ts', status: 'failed', message: '',

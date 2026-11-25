@@ -32,7 +32,8 @@ export function parseJestJson(json, cwd) {
     }
     let anyFailed = false;
     for (const a of assertions) {
-      const name = a.fullName || [...(a.ancestorTitles ?? []), a.title].join(' ');
+      // Nesting is joined with " > " like node:test, so a test name can only match whole segments.
+      const name = typeof a.title === 'string' ? [...(a.ancestorTitles ?? []), a.title].join(' > ') : String(a.fullName ?? '');
       if (a.status === 'passed') out.push({ file, name, status: 'pass' });
       else if (a.status === 'failed') {
         anyFailed = true;

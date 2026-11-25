@@ -40,11 +40,12 @@ trust-kit red-green --base <rev> --head <rev> [--out <path>]
 trust-kit evidence --item <id> --run <GitHub Actions run id 或網址> [--screens <dir>] [--out <path>]
 ```
 
-- **只接受 GitHub Actions run 產生的紅綠燈報告**：用 `gh api repos/<origin>/actions/runs/<id>` 查 run，必須是 `origin` 這個 repo、`head_sha` 等於目前 commit、已完成的 `pull_request` run；再用 `gh run download` 從該 run 下載 `trust-red-green` artifact，報告的 `head` 必須等於目前 commit，`ciRunUrl` 必須等於該 run 的網址。本機檔案一律不收（0.4.0 起沒有 `--red-green`）。需要已登入的 `gh`。
-- **逐項證明**：項目檔 `.trust/items/<id>.json` 要列出證明它的測試 `tests: [{ "runnerId", "file", "testName" }]`。每個測試都要在報告中 `behavior_fail → pass`（`testName` 可寫完整名稱或巢狀名稱的最後一段）。整個 PR 的 `valid_red` 不能代替項目自己的紅燈；沒有列 tests 的項目永遠不完整。
+- **只接受 GitHub Actions run 產生的紅綠燈報告**：用 `gh api repos/<origin>/actions/runs/<id>` 查 run，必須是 `origin` 這個 repo、`head_sha` 等於目前 commit、已完成的 `pull_request` run，且其中的 red-green job（名稱 `red-green` 或 `<job> / red-green`）成功（紅綠燈 head_fail、protected 或 ledger verify 失敗的 run 都不算；同一 run 的其他 job 失敗不影響）；再用 `gh run download` 從該 run 下載 `trust-red-green` artifact，報告的 `head` 必須等於目前 commit，`ciRunUrl` 必須等於該 run 的網址。本機檔案一律不收（0.4.0 起沒有 `--red-green`）。需要已登入的 `gh`。
+- **逐項證明**：項目檔 `.trust/items/<id>.json` 要列出證明它的測試 `tests: [{ "runnerId", "file", "testName" }]`。每個測試都要在報告中 `behavior_fail → pass`。`testName` 寫完整名稱，或巢狀名稱尾端的完整段落（node:test 與 Jest 都以 `describe > test` 表示巢狀）；名稱只是字尾相同的兄弟測試不算，對到不只一個測試也不算。整個 PR 的 `valid_red` 不能代替項目自己的紅燈；沒有列 tests 的項目永遠不完整。
 - 項目有 `app`／`web` 時還要截圖證據（`screens collect` 產生、commit 相同、雜湊相符）。
 - 證據包格式 `trust-kit/evidence@2`：`redGreen` 記 run id、repo、run 網址（取自 GitHub API），`tests` 記每個測試的 base／head 結果。
-- 限制：一個 PR 若同時修改 workflow 讓它上傳假的 artifact，該 run 仍是「這個 repo 的 run」；workflow 屬於受保護路徑，會在審查包標出（結構性修正在第三階段）。
+- 證據包另記 `redGreen.base`（CI 判定用的 merge-base）與 `screensDir`（repo 內相對路徑），審查包重新驗證時使用。
+- 限制：一個 PR 若同時修改 workflow 讓它上傳假的 artifact，該 run 仍是「這個 repo 的 run」；`.github/workflows/**` 一律屬於受保護路徑，會在審查包標出，但不會被擋下（結構性修正在第三階段）。
 
 ### packet／approve／check-approval（審查包與核准）
 
@@ -55,7 +56,7 @@ trust-kit check-approval --kind <deploy-function|hosting|app-release|batch-write
 ```
 
 - `packet`：**base 一律是 head 與預設分支的 merge-base**（`trust.config.json` 的 `defaultBranch`，預設 `main`；有 `origin/<分支>` 就用它，否則用本機分支）。base 寫進 markdown（因此也在審查包 id 裡）與紀錄；傳 `--base` 時其 merge-base 必須與此相同，否則拒絕（例如 `--base HEAD`）。base 等於 head（已合進預設分支、看不到任何改動）時所有編號都標為需要注意。
-- 讀 `.trust/items/<id>.json` 與 `<evidence.outDir>/<id>.json`，並從 base 偵測驗證系統改動。產出繁中 markdown：最上方「需要注意」（證據不完整、紅綠燈非 `valid_red`、沒有證據包、證據包不是 head 的 commit、證據包是 0.4.0 以前的格式、項目沒有列測試、base 等於 head、驗證系統改動），接著逐項列出編號、標題、完成條件、證明它的測試與其 base → head 結果、紅綠燈與 CI 連結、截圖、需要的核准（kind／target／commit 前 12 碼）。每個（項目, 核准）一個編號；沒有列核准的項目仍有編號但無法核准。審查包 id＝markdown 的 sha256 前 12 碼；另寫 `<out>.json` 與 `.trust/packets/<id>.json`（`{ id, entries, generatedAt, base, baseRef, head }`）。核准一律綁定審查包的 head（預設 `HEAD`）：部署的就是 head，所以每個項目的證據包也必須是 head 的。
+- 讀 `.trust/items/<id>.json`；`<evidence.outDir>/<id>.json` 只用來取得 CI run id 與截圖目錄，**每個項目的證據都在產生審查包時向 CI run 重新驗證**（因此需要已登入的 `gh`），手寫或過期的 `complete: true` 不會進到審查包。沒有 run id 的證據包標為需要注意。並從 base 偵測驗證系統改動。產出繁中 markdown：最上方「需要注意」（證據不完整、紅綠燈非 `valid_red`、沒有證據包、證據包不是 head 的 commit、證據包是 0.4.0 以前的格式、項目沒有列測試、CI 紅綠燈的 base 不是審查包的 base（例如疊在別的 PR 上）、base 等於 head、驗證系統改動），接著逐項列出編號、標題、完成條件、證明它的測試與其 base → head 結果、紅綠燈與 CI 連結、截圖、需要的核准（kind／target／commit 前 12 碼）。每個（項目, 核准）一個編號；沒有列核准的項目仍有編號但無法核准。審查包 id＝markdown 的 sha256 前 12 碼；另寫 `<out>.json` 與 `.trust/packets/<id>.json`（`{ id, entries, generatedAt, base, baseRef, head }`）。核准一律綁定審查包的 head（預設 `HEAD`）：部署的就是 head，所以每個項目的證據包也必須是 head 的。
 - `approve`：審查包紀錄沒有 `base`（0.4.0 以前產生）時拒絕。把核准寫進 `.trust/approvals/<id>.json`（`approvedBy: "user-chat"`、`approvedAt`；同一審查包再次核准會合併）。審查包不存在、編號不存在、項目沒有核准種類時丟錯且不寫檔；有「需要注意」的編號要加 `--allow-flagged` 才能核准（驗證系統有改動時，所有編號都算需要注意）。
 - `check-approval`：掃 `.trust/approvals/*.json`，只有 kind、target、commit 完全相同才 exit 0；不符 exit 1，原因列出核准的 commit 與目前的 commit，或「未核准」。`--commit` 若不是 40 碼 SHA 會先解析成完整 commit。
 - **`batch-write` 第一階段不可核准**：核准只綁 git head，批次寫入需要以寫入計畫 hash 核准，要等第二階段。審查包對每個 `batch-write` 編號加上「批次寫入計畫 hash 尚未支援（第二階段），不可核准」；`approve` 即使加 `--allow-flagged` 也拒絕；`check-approval --kind batch-write` 一律 exit 1。
@@ -81,7 +82,7 @@ trust-kit check-approval --kind <deploy-function|hosting|app-release|batch-write
 
 - `adapter`：`flutter`、`jest`、`node-test` 之一；`command`（字串陣列）可選。
 - `setup`（可選）：argv 陣列的陣列，例如 `[["npm", "ci"]]`、`[["flutter", "pub", "get"]]`。暫存 worktree 沒有安裝好的依賴，所以 red-green 會在 base 與 head 兩個 checkout 的 `<checkout>/<cwd>` 依序執行（不經 shell），只對有變更測試的 runner 執行，跑完才跑測試。任一指令失敗＝工具錯誤，訊息含 runner id、base／head、指令與 stderr 結尾。
-- `protectedPaths` 一律自動加入 `trust.config.json`、`tools/trust-kit.version`、`.trust/rules.json`。
+- `protectedPaths` 一律自動加入 `trust.config.json`、`tools/trust-kit.version`、`.trust/rules.json`、`.github/workflows/**`。
 
 ## 邊界
 
@@ -100,4 +101,6 @@ npm test
 - `evidence --red-green <file>` 改為 `evidence --run <run id|URL>`，需要已登入的 `gh`。
 - 項目檔要加 `tests`；舊的 `evidence@1` 證據包與沒有 `base` 的審查包會被標出／不能核准，請重新產生。
 - `packet --base` 變成可省略，且只能等於與預設分支的 merge-base。
-- 測試本體裡找不到模組改算 `load_fail`；`valid_red` 需要同一個測試 `behavior_fail → pass`；規則證據只認 `check.testName` 那一列。
+- 測試本體裡找不到模組改算 `load_fail`；`valid_red` 需要同一個測試 `behavior_fail → pass`；規則證據只認 `check.testName` 那一列（名稱要唯一）。
+- Jest 的測試名稱改為 `describe > test`（與 node:test 相同），`check.testName` 若寫了以空白連接的 Jest fullName 要改。
+- `.github/workflows/**` 一律受保護；`packet` 會向 CI run 重新驗證每個證據包，需要 `gh`。

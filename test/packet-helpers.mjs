@@ -8,7 +8,7 @@ export const mkItem = (id, approvals = [{ kind: 'deploy-function', target: 'fnA'
 
 export const mkEvidence = (item, commitSha = HEAD, extra = {}) => ({
   schema: 'trust-kit/evidence@2', item, commit: commitSha,
-  redGreen: { verdict: 'valid_red', ciRunUrl: 'https://ci.example/runs/9', runId: '9', repo: 'acme/app', head: commitSha },
+  redGreen: { verdict: 'valid_red', ciRunUrl: 'https://ci.example/runs/9', runId: '9', repo: 'acme/app', head: commitSha, base: BASE },
   tests: item.tests.map((t) => ({ ...t, base: 'behavior_fail', head: 'pass', ok: true })),
   checks: [], complete: true, missing: [], ...extra,
 });

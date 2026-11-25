@@ -9,6 +9,7 @@ import { makeRepo, commit, nodeTestConfig } from './redgreen/helpers.mjs';
 import { buildPacket } from '../src/packet.mjs';
 import { mkItem, mkEvidence, HEAD, BASE } from './packet-helpers.mjs';
 import { git } from './redgreen/helpers.mjs';
+import { SLUG, RUN_ID, RUN_URL, mkRun, fakeGhEnv } from './fake-gh.mjs';
 
 const bin = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'trust-kit.mjs');
 
@@ -73,9 +74,11 @@ function branchRepo() {
 }
 
 test('CLI packet writes markdown, <out>.json and .trust/packets/<id>.json', () => {
-  const { dir, base, head } = branchRepo();
+  const { dir, base, head } = ciRepo();
+  const env = fakeGhEnv(dir, { run: mkRun(head), rep: ciReport(head, base, { file: B1_TEST.file, name: B1_TEST.testName, base: 'behavior_fail', head: 'pass' }) });
+  fs.writeFileSync(path.join(dir, '.trust/evidence/B1.json'), JSON.stringify({ redGreen: { runId: RUN_ID } }));
   const out = path.join(dir, 'out', 'review.md');
-  const r = spawnSync(process.execPath, [bin, 'packet', '--items', 'B1', '--base', base, '--out', out], { cwd: dir, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [bin, 'packet', '--items', 'B1', '--base', base, '--out', out], { cwd: dir, encoding: 'utf8', env });
   assert.equal(r.status, 0, r.stderr);
   const md = fs.readFileSync(out, 'utf8');
   const side = JSON.parse(fs.readFileSync(`${out}.json`, 'utf8'));
@@ -178,4 +181,54 @@ test('I6: the packet shows each item\'s acceptance and its own tests with their 
   assert.deepEqual(p.entries[0].flagged, []);
   assert.ok(p.markdown.includes('登入失敗要顯示原因'), p.markdown);
   assert.ok(p.markdown.includes('test/b1.test.mjs') && p.markdown.includes('b1 works') && p.markdown.includes('behavior_fail → pass'), p.markdown);
+});
+
+test('the CI report was judged against another base than the packet base (stacked PR) → flagged', () => {
+  const dir = repo();
+  const b1 = mkItem('B1');
+  const ev = mkEvidence(b1);
+  ev.redGreen = { ...ev.redGreen, base: 'f'.repeat(40) };
+  const p = buildPacket({ repoRoot: dir, base: BASE, head: HEAD, items: [{ item: b1, evidence: ev }], protectedChanges: [] });
+  assert.ok(p.entries[0].flagged.some((f) => f.includes('紅綠燈的 base')), p.entries[0].flagged.join('|'));
+});
+
+/** branchRepo + origin on GitHub + an item with one test; returns { dir, base, head }. */
+function ciRepo() {
+  const { dir, base } = branchRepo();
+  git(dir, 'remote', 'add', 'origin', `https://github.com/${SLUG}.git`);
+  git(dir, 'update-ref', 'refs/remotes/origin/main', base);
+  return { dir, base, head: git(dir, 'rev-parse', 'HEAD') };
+}
+const ciReport = (head, base, testRow) => ({ schema: 'trust-kit/red-green@1', base, requestedBase: base, head, verdict: 'valid_red',
+  runners: [{ id: 'unit', tests: [testRow] }], newlyEnforced: [], generatedAt: '2026-11-26T00:00:00Z', ciRunUrl: RUN_URL });
+const B1_TEST = mkItem('B1').tests[0];
+const runPacket = (dir, env) => {
+  const out = path.join(dir, 'review.md');
+  const r = spawnSync(process.execPath, [bin, 'packet', '--items', 'B1', '--out', out], { cwd: dir, encoding: 'utf8', env });
+  assert.equal(r.status, 0, r.stderr);
+  return JSON.parse(fs.readFileSync(`${out}.json`, 'utf8'));
+};
+
+test('CLI packet re-verifies evidence from the CI run: a hand-written complete bundle without a run is flagged', () => {
+  const { dir, head } = ciRepo();
+  fs.writeFileSync(path.join(dir, '.trust/evidence/B1.json'), JSON.stringify({ schema: 'trust-kit/evidence@2', item: mkItem('B1'),
+    commit: head, redGreen: { verdict: 'valid_red' }, tests: [], checks: [], complete: true, missing: [] }));
+  const side = runPacket(dir, process.env);
+  assert.ok(side.entries[0].flagged.some((f) => f.includes('CI run')), side.entries[0].flagged.join('|'));
+});
+
+test('CLI packet re-verifies evidence from the CI run: the file says complete but the run disagrees → flagged', () => {
+  const { dir, base, head } = ciRepo();
+  const env = fakeGhEnv(dir, { run: mkRun(head), rep: ciReport(head, base, { file: B1_TEST.file, name: B1_TEST.testName, base: 'pass', head: 'pass' }) });
+  fs.writeFileSync(path.join(dir, '.trust/evidence/B1.json'), JSON.stringify({ ...mkEvidence(mkItem('B1'), head), redGreen: { runId: RUN_ID } }));
+  const side = runPacket(dir, env);
+  assert.ok(side.entries[0].flagged.some((f) => f.includes(B1_TEST.testName)), side.entries[0].flagged.join('|'));
+});
+
+test('CLI packet re-verifies evidence from the CI run: a real run proving the item\'s test → unflagged', () => {
+  const { dir, base, head } = ciRepo();
+  const env = fakeGhEnv(dir, { run: mkRun(head), rep: ciReport(head, base, { file: B1_TEST.file, name: B1_TEST.testName, base: 'behavior_fail', head: 'pass' }) });
+  fs.writeFileSync(path.join(dir, '.trust/evidence/B1.json'), JSON.stringify({ redGreen: { runId: RUN_ID } }));
+  const side = runPacket(dir, env);
+  assert.deepEqual(side.entries[0].flagged, []);
 });

@@ -5,7 +5,8 @@ import path from 'node:path';
 export const CONFIG_FILE = 'trust.config.json';
 export const ADAPTERS = /** @type {const} */ (['flutter', 'jest', 'node-test']);
 /** Files that guard trust-kit itself; always protected even if the user omits them. */
-export const ALWAYS_PROTECTED = Object.freeze(['trust.config.json', 'tools/trust-kit.version', '.trust/rules.json']);
+/** `.github/workflows/**`: a workflow decides what CI runs and which artifact it uploads, so changing one can forge evidence. */
+export const ALWAYS_PROTECTED = Object.freeze(['trust.config.json', 'tools/trust-kit.version', '.trust/rules.json', '.github/workflows/**']);
 
 /**
  * @typedef {{ id: string, adapter: 'flutter'|'jest'|'node-test', cwd: string, testGlobs: string[], command?: string[], setup?: string[][] }} RunnerConfig

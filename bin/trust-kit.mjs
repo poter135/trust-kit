@@ -156,14 +156,29 @@ const SUBCOMMANDS = {
       }
       const ids = /** @type {string} */ (flags.items).split(',').map((s) => s.trim()).filter(Boolean);
       if (ids.length === 0) throw new UsageError('packet: --items is empty');
-      const items = ids.map((id) => {
+      // The bundle on disk is only a pointer (its CI run id and screens dir): every bundle is rebuilt here from the
+      // CI run, so a hand-written or stale `complete: true` never reaches the page the user approves.
+      const items = [];
+      for (const id of ids) {
         assertItemId(id);
         const item = loadItem(repoRoot, id);
         const file = path.join(repoRoot, outDir, `${id}.json`);
+        let stored = null;
+        try { stored = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { stored = null; }
         let evidence = null;
-        try { evidence = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { evidence = null; }
-        return { item, evidence };
-      });
+        if (stored) {
+          const runId = stored?.redGreen?.runId;
+          if (typeof runId !== 'string' || runId === '') {
+            evidence = { schema: stored.schema, item, commit: stored.commit, redGreen: { verdict: null }, tests: [], checks: [], complete: false,
+              missing: [`證據包沒有 CI run id，無法向 CI run 重新驗證。請執行 trust-kit evidence --item ${id} --run <CI run>`] };
+          } else {
+            const opts = { repoRoot, itemId: id, commit: head, runId };
+            if (typeof stored.screensDir === 'string' && !stored.screensDir.startsWith('<')) opts.screensDir = path.join(repoRoot, stored.screensDir);
+            evidence = await buildEvidence(opts);
+          }
+        }
+        items.push({ item, evidence });
+      }
       const protectedChanges = await detectProtectedChanges({ repoRoot, base, head });
       const packet = buildPacket({ repoRoot, base, baseRef, head, items, protectedChanges });
       const out = path.resolve(/** @type {string} */ (flags.out));

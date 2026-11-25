@@ -10,12 +10,13 @@
  */
 
 /**
- * True when a judged row's name is `testName`: the exact name, or `testName` as the last part of a nested name
- * (node:test `parent > child`, Jest fullName `describe title test title`).
+ * True when a judged row's name is `testName`: the exact name, or whole trailing ` > ` segments of a nested name
+ * (`describe > test`; node:test and Jest both report nesting this way). A sibling whose name only ends with the
+ * same words does not match.
  * @param {string} rowName @param {string} testName
  */
 export function matchesTestName(rowName, testName) {
-  return rowName === testName || rowName.endsWith(` > ${testName}`) || rowName.endsWith(` ${testName}`);
+  return rowName === testName || rowName.endsWith(` > ${testName}`);
 }
 
 /** A row that proves a red: it failed on base by behavior and passes on head. @param {JudgedTest} t */

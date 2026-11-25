@@ -42,7 +42,7 @@ test('protectedPaths always include trust-kit control files', () => {
     assert.ok(cfg.protectedPaths.includes(p), `missing ${p}`);
   }
   assert.ok(cfg.protectedPaths.includes('ci/**'), 'user entries kept');
-  assert.deepEqual([...ALWAYS_PROTECTED].sort(), ['.trust/rules.json', 'tools/trust-kit.version', 'trust.config.json']);
+  assert.deepEqual([...ALWAYS_PROTECTED].sort(), ['.github/workflows/**', '.trust/rules.json', 'tools/trust-kit.version', 'trust.config.json']);
 });
 
 test('missing config file throws TrustConfigError with fix hint', () => {

@@ -108,7 +108,7 @@ test('CLI: evidence + screens collect + packet with inside and outside paths →
   }
 });
 
-test('packet: legacy evidence bundle with repo-root paths in missing is scrubbed', () => {
+test('packet: legacy evidence bundle (repo-root paths, no CI run id) is flagged and leaks no absolute path', () => {
   const { dir, sha } = setup();
   writeFiles(dir, { '.trust/evidence/web1.json': JSON.stringify({ schema: 'trust-kit/evidence@1', commit: sha,
     redGreen: { verdict: 'valid_red', ciRunUrl: 'https://ci.example/1', head: sha }, checks: [], complete: false,
@@ -117,7 +117,7 @@ test('packet: legacy evidence bundle with repo-root paths in missing is scrubbed
   assert.equal(r.status, 0, r.stderr);
   const md = fs.readFileSync(path.join(dir, 'p.md'), 'utf8');
   assertNoAbsPath(md + fs.readFileSync(path.join(dir, 'p.md.json'), 'utf8'), dir, 'packet');
-  assert.ok(md.includes('out/rg.json'), md);
+  assert.ok(md.includes('沒有 CI run id'), md);
 });
 
 test('scrubRepoRoot respects path boundaries and never scrubs a filesystem root', () => {

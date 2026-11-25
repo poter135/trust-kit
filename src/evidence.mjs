@@ -9,7 +9,7 @@ import { readScreens } from './screens.mjs';
 import { displayPath, scrubRepoRoot } from './paths.mjs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
-import { ghClient, originSlug, parseRunRef, RED_GREEN_ARTIFACT } from './github.mjs';
+import { ghClient, originSlug, parseRunRef, redGreenJobs, RED_GREEN_ARTIFACT } from './github.mjs';
 import { isRedToGreen, matchesTestName } from './redgreen/judge.mjs';
 
 export const RED_GREEN_SCHEMA = 'trust-kit/red-green@1';
@@ -23,7 +23,8 @@ export const EVIDENCE_SCHEMA = 'trust-kit/evidence@2';
  * @typedef {import('./items.mjs').ItemTest & { base: string, head: string, ok: boolean }} ItemTestResult
  *   `base`/`head` are the statuses found in the CI report (`absent` when the test is not in it).
  * @typedef {{ schema: 'trust-kit/evidence@2', item: import('./items.mjs').Item, commit: string,
- *   redGreen: { verdict: string|null, ciRunUrl: string|null, runId: string|null, repo: string|null, head: string|null },
+ *   redGreen: { verdict: string|null, ciRunUrl: string|null, runId: string|null, repo: string|null, head: string|null, base: string|null },
+ *   screensDir?: string,
  *   tests: ItemTestResult[],
  *   screens?: import('./screens.mjs').ScreensManifest, checks: Check[], complete: boolean, missing: string[] }} EvidenceBundle
  *   `redGreen.ciRunUrl` comes from the GitHub API (the run's html_url), never from the report file.
@@ -94,6 +95,20 @@ async function fetchFromCi({ repoRoot, runRef, sha, github, check }) {
   check('ci.completed', done, done ? `pull_request run, ${run.conclusion}`
     : `CI run ${runId} 不是已完成的 pull_request run（event=${run?.event}，status=${run?.status}）。請等 PR 上的 trust-kit red-green 跑完。`);
 
+  let jobs;
+  try {
+    jobs = redGreenJobs(await github.getJobs(slug, runId));
+  } catch (e) {
+    jobs = null;
+    check('ci.redGreenJob', false, `查不到 CI run ${runId} 的 jobs：${e.message}`);
+  }
+  if (jobs) {
+    const ok = jobs.length === 1 && jobs[0].status === 'completed' && jobs[0].conclusion === 'success';
+    check('ci.redGreenJob', ok, ok ? `${jobs[0].name}: success`
+      : jobs.length === 0 ? `CI run ${runId} 沒有 red-green job（名稱為 red-green 或 <job> / red-green），不是 trust-kit 紅綠燈的 run。`
+        : `CI run ${runId} 的 red-green job 沒有成功（${jobs.map((j) => `${j.name}: ${j.status}/${j.conclusion}`).join('、')}）。紅綠燈、protected 或 ledger verify 失敗的 run 不能當證據。`);
+  }
+
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'trust-kit-ci-'));
   try {
     try {
@@ -121,8 +136,9 @@ function itemTestResults(tests, report) {
   return tests.map((t) => {
     const rows = (runners.find((r) => r?.id === t.runnerId)?.tests ?? [])
       .filter((r) => r?.file === t.file && typeof r?.name === 'string' && matchesTestName(r.name, t.testName));
-    const best = rows.find(isRedToGreen) ?? rows[0];
-    return { ...t, base: best?.base ?? 'absent', head: best?.head ?? 'absent', ok: !!best && isRedToGreen(best) };
+    if (rows.length > 1) return { ...t, base: 'ambiguous', head: `${rows.length} matches`, ok: false };
+    const [only] = rows;
+    return { ...t, base: only?.base ?? 'absent', head: only?.head ?? 'absent', ok: !!only && isRedToGreen(only) };
   });
 }
 
@@ -181,6 +197,7 @@ export async function buildEvidence({ repoRoot, itemId, commit, runId, screensDi
     runId: ci.runId ?? null,
     repo: ci.slug ?? null,
     head: typeof report?.head === 'string' ? report.head : null,
+    base: typeof report?.base === 'string' ? report.base : null,
   };
   if (report) {
     check('red-green.verdict', redGreen.verdict === 'valid_red',
@@ -202,15 +219,18 @@ export async function buildEvidence({ repoRoot, itemId, commit, runId, screensDi
   }
   for (const t of tests) {
     check(`item.test:${t.file}::${t.testName}`, t.ok, t.ok ? `${t.file} › ${t.testName}: behavior_fail → pass`
-      : `項目 ${item.id} 的測試 ${t.file} › ${JSON.stringify(t.testName)}（runner ${t.runnerId}）在紅綠燈報告中不是 behavior_fail → pass（base=${t.base}，head=${t.head}）。整個 PR 的 valid_red 不能代替這個項目自己的紅燈。`);
+      : `項目 ${item.id} 的測試 ${t.file} › ${JSON.stringify(t.testName)}（runner ${t.runnerId}）在紅綠燈報告中不是 behavior_fail → pass（base=${t.base}，head=${t.head}${t.base === 'ambiguous' ? '：名稱對到不只一個測試，請寫完整名稱 `describe > test`' : ''}）。整個 PR 的 valid_red 不能代替這個項目自己的紅燈。`);
   }
 
   /** @type {import('./screens.mjs').ScreensManifest|undefined} */
   let screens;
+  /** @type {string|undefined} */
+  let screensShown;
   if (item.surfaces.includes('app') || item.surfaces.includes('web')) {
     const dir = path.resolve(repoRoot, screensDir ?? path.join(config.evidence.screensDir, itemId));
     screens = readScreens(dir);
     const shown = displayPath(repoRoot, dir);
+    screensShown = shown;
     const howTo = `請截圖或錄影後執行 \`trust-kit screens collect --dir ${shown} --commit ${sha}\`，再以 --screens ${shown} 重跑 evidence。`;
     const n = screens?.files.length ?? 0;
     check('screens.files', n >= 1, n >= 1 ? `${n} file(s)`
@@ -229,5 +249,6 @@ export async function buildEvidence({ repoRoot, itemId, commit, runId, screensDi
   /** @type {EvidenceBundle} */
   const bundle = { schema: EVIDENCE_SCHEMA, item, commit: sha, redGreen, tests, checks, complete: missing.length === 0, missing };
   if (screens) bundle.screens = screens;
+  if (screensShown !== undefined) bundle.screensDir = screensShown;
   return bundle;
 }
