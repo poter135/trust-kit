@@ -1,0 +1,26 @@
+{"type":"fail","name":"load.fx.mjs","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","nesting":0,"isFile":true,"suite":false,"skip":false,"todo":false,"failureType":"testCodeFailure","message":"test failed"}
+{"type":"fail","name":"assertion fails","file":"/REPO/test/fixtures/runners/node-test/behavior.fx.mjs","nesting":0,"isFile":false,"suite":false,"skip":false,"todo":false,"failureType":"testCodeFailure","message":"AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n2 !== 3\n\n    at TestContext.<anonymous> (file:///REPO/test/fixtures/runners/node-test/behavior.fx.mjs:5:10)\n    at Test.runInAsyncScope (node:async_hooks:227:14)\n    at Test.run (node:internal/test_runner/test:1306:25)\n    at Test.start (node:internal/test_runner/test:1177:17)\n    at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17)"}
+{"type":"fail","name":"throws at runtime","file":"/REPO/test/fixtures/runners/node-test/behavior.fx.mjs","nesting":0,"isFile":false,"suite":false,"skip":false,"todo":false,"failureType":"testCodeFailure","message":"TypeError: Cannot read properties of null (reading 'boom')\n    at TestContext.<anonymous> (file:///REPO/test/fixtures/runners/node-test/behavior.fx.mjs:9:8)\n    at Test.runInAsyncScope (node:async_hooks:227:14)\n    at Test.run (node:internal/test_runner/test:1306:25)\n    at Test.processPendingSubtests (node:internal/test_runner/test:897:18)\n    at Test.postRun (node:internal/test_runner/test:1447:19)\n    at Test.run (node:internal/test_runner/test:1372:12)\n    at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)"}
+{"type":"fail","name":"behavior.fx.mjs","file":"/REPO/test/fixtures/runners/node-test/behavior.fx.mjs","nesting":0,"isFile":true,"suite":false,"skip":false,"todo":false,"failureType":"subtestsFailed","message":"test failed"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"node:internal/modules/esm/resolve:271\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    throw new ERR_MODULE_NOT_FOUND(\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"          ^\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/REPO/test/fixtures/runners/node-test/does-not-exist.mjs' imported from /REPO/test/fixtures/runners/node-test/load.fx.mjs\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at finalizeResolution (node:internal/modules/esm/resolve:271:11)\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at moduleResolve (node:internal/modules/esm/resolve:865:10)\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at defaultResolve (node:internal/modules/esm/resolve:992:11)\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at #cachedDefaultResolve (node:internal/modules/esm/loader:691:20)\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at #resolveAndMaybeBlockOnLoaderThread (node:internal/modules/esm/loader:708:38)\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at ModuleLoader.resolveSync (node:internal/modules/esm/loader:740:52)\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at #resolve (node:internal/modules/esm/loader:673:17)\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at ModuleLoader.getOrCreateModuleJob (node:internal/modules/esm/loader:593:35)\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at ModuleJob.syncLink (node:internal/modules/esm/module_job:163:33)\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"    at ModuleJob.link (node:internal/modules/esm/module_job:253:17) {\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"  code: 'ERR_MODULE_NOT_FOUND',\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"  url: 'file:///REPO/test/fixtures/runners/node-test/does-not-exist.mjs'\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"}\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"\n"}
+{"type":"stderr","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","message":"Node.js v24.16.0\n"}
+{"type":"fail","name":"load.fx.mjs","file":"/REPO/test/fixtures/runners/node-test/load.fx.mjs","nesting":0,"isFile":true,"suite":false,"skip":false,"todo":false,"failureType":"testCodeFailure","message":"test failed"}
+{"type":"pass","name":"adds numbers","file":"/REPO/test/fixtures/runners/node-test/pass.fx.mjs","nesting":0,"isFile":false,"suite":false,"skip":false,"todo":false}

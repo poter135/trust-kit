@@ -1,2 +1,6 @@
 node_modules/
 .trust/evidence/
+test/fixtures/runners/flutter/.dart_tool/
+test/fixtures/runners/flutter/build/
+test/fixtures/runners/flutter/pubspec.lock
+test/fixtures/runners/flutter/.flutter-plugins*

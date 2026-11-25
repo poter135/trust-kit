@@ -1,0 +1,28 @@
+{"protocolVersion":"0.1.1","runnerVersion":null,"pid":65418,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"/REPO/test/fixtures/runners/flutter/test/pass_test.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading /REPO/test/fixtures/runners/flutter/test/pass_test.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":0}
+{"suite":{"id":2,"platform":"vm","path":"/REPO/test/fixtures/runners/flutter/test/behavior_test.dart"},"type":"suite","time":3}
+{"test":{"id":3,"name":"loading /REPO/test/fixtures/runners/flutter/test/behavior_test.dart","suiteID":2,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":3}
+{"suite":{"id":4,"platform":"vm","path":"/REPO/test/fixtures/runners/flutter/test/load_test.dart"},"type":"suite","time":3}
+{"test":{"id":5,"name":"loading /REPO/test/fixtures/runners/flutter/test/load_test.dart","suiteID":4,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":3}
+{"count":3,"time":4,"type":"allSuites"}
+
+[{"event":"test.startedProcess","params":{"vmServiceUri":null}}]
+
+[{"event":"test.startedProcess","params":{"vmServiceUri":null}}]
+{"testID":5,"error":"Failed to load \"/REPO/test/fixtures/runners/flutter/test/load_test.dart\":\nCompilation failed for testPath=/REPO/test/fixtures/runners/flutter/test/load_test.dart: test/load_test.dart:5:19: Error: A value of type 'String' can't be assigned to a variable of type 'int'.\n    final int n = 'not a number';\n                  ^\n.","stackTrace":"","isFailure":false,"type":"error","time":5222}
+{"testID":5,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":5224}
+{"testID":1,"error":"Error: The Dart compiler exited unexpectedly.","stackTrace":"package:flutter_tools/src/base/common.dart 34:3  throwToolExit\npackage:flutter_tools/src/compile.dart 1024:11   DefaultResidentCompiler._compile.<fn>\ndart:async/zone_root.dart 48:47                  _rootRunUnary\ndart:async/zone.dart 816:35                      _CustomZone.runUnary\ndart:async/future_impl.dart 948:45               Future._propagateToListeners.handleValueCallback\ndart:async/future_impl.dart 977:13               Future._propagateToListeners\ndart:async/future_impl.dart 862:9                Future._propagateToListeners\ndart:async/future_impl.dart 720:5                Future._completeWithValue\ndart:async/future_impl.dart 804:7                Future._asyncCompleteWithValue.<fn>\ndart:async/zone_root.dart 35:13                  _rootRun\ndart:async/zone.dart 810:35                      _CustomZone.run\ndart:async/zone.dart 702:7                       _CustomZone.runGuarded\ndart:async/zone.dart 743:23                      _CustomZone.bindCallbackGuarded.<fn>\ndart:async/schedule_microtask.dart 40:35         _microtaskLoop\ndart:async/schedule_microtask.dart 49:5          _startMicrotaskLoop\ndart:isolate-patch/isolate_patch.dart 127:13     _runPendingImmediateCallback\ndart:isolate-patch/isolate_patch.dart 193:5      _RawReceivePort._handleMessage\n","isFailure":false,"type":"error","time":5243}
+{"testID":1,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":5646}
+{"group":{"id":6,"suiteID":0,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":null,"column":null,"url":null},"type":"group","time":5647}
+{"test":{"id":7,"name":"adds numbers","suiteID":0,"groupIDs":[6],"metadata":{"skip":false,"skipReason":null},"line":4,"column":3,"url":"file:///REPO/test/fixtures/runners/flutter/test/pass_test.dart"},"type":"testStart","time":5647}
+{"testID":3,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":5648}
+{"group":{"id":8,"suiteID":2,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":2,"line":null,"column":null,"url":null},"type":"group","time":5649}
+{"test":{"id":9,"name":"assertion fails","suiteID":2,"groupIDs":[8],"metadata":{"skip":false,"skipReason":null},"line":4,"column":3,"url":"file:///REPO/test/fixtures/runners/flutter/test/behavior_test.dart"},"type":"testStart","time":5649}
+{"testID":7,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":5660}
+{"testID":9,"error":"Expected: <3>\n  Actual: <2>\n","stackTrace":"package:matcher                                     expect\npackage:flutter_test/src/widget_tester.dart 473:18  expect\ntest/behavior_test.dart 5:5                         main.<fn>\n","isFailure":true,"type":"error","time":5675}
+{"testID":9,"result":"failure","skipped":false,"hidden":false,"type":"testDone","time":5675}
+{"test":{"id":10,"name":"throws at runtime","suiteID":2,"groupIDs":[8],"metadata":{"skip":false,"skipReason":null},"line":8,"column":3,"url":"file:///REPO/test/fixtures/runners/flutter/test/behavior_test.dart"},"type":"testStart","time":5675}
+{"testID":10,"error":"Bad state: boom","stackTrace":"test/behavior_test.dart 9:5  main.<fn>\n","isFailure":false,"type":"error","time":5685}
+{"testID":10,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":5685}
+{"success":false,"type":"done","time":5691}

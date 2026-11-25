@@ -1,0 +1,119 @@
+{
+  "numFailedTestSuites": 2,
+  "numFailedTests": 2,
+  "numPassedTestSuites": 1,
+  "numPassedTests": 1,
+  "numPendingTestSuites": 0,
+  "numPendingTests": 0,
+  "numRuntimeErrorTestSuites": 1,
+  "numTodoTests": 0,
+  "numTotalTestSuites": 3,
+  "numTotalTests": 3,
+  "openHandles": [],
+  "snapshot": {
+    "added": 0,
+    "didUpdate": false,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0
+  },
+  "startTime": 1795605243156,
+  "success": false,
+  "testResults": [
+    {
+      "assertionResults": [],
+      "coverage": {},
+      "endTime": 1795605244281,
+      "message": "  ● Test suite failed to run\n\n    \u001b[96msrc/load.spec.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m7\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2322: \u001b[0mType 'string' is not assignable to type 'number'.\n\n    \u001b[7m1\u001b[0m const n: number = 'not a number';\n    \u001b[7m \u001b[0m \u001b[91m      ~\u001b[0m\n",
+      "name": "/REPO/test/fixtures/runners/jest/src/load.spec.ts",
+      "startTime": 1795605244281,
+      "status": "failed",
+      "summary": ""
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "duration": 3,
+          "failureDetails": [],
+          "failureMessages": [],
+          "fullName": "adds numbers",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 1,
+          "retryReasons": [],
+          "status": "passed",
+          "title": "adds numbers"
+        }
+      ],
+      "endTime": 1795605244174,
+      "message": "",
+      "name": "/REPO/test/fixtures/runners/jest/src/pass.spec.ts",
+      "startTime": 1795605243540,
+      "status": "passed",
+      "summary": ""
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "duration": 5,
+          "failureDetails": [
+            {
+              "matcherResult": {
+                "actual": 2,
+                "expected": 3,
+                "message": "expect(received).toBe(expected) // Object.is equality\n\nExpected: 3\nReceived: 2",
+                "name": "toBe",
+                "pass": false
+              }
+            }
+          ],
+          "failureMessages": [
+            "Error: expect(received).toBe(expected) // Object.is equality\n\nExpected: 3\nReceived: 2\n    at Object.<anonymous> (/REPO/test/fixtures/runners/jest/src/behavior.spec.ts:2:17)\n    at Promise.then.completed (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at _runTest (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/run.js:126:9)\n    at run (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/REPO/test/fixtures/runners/jest/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/REPO/test/fixtures/runners/jest/node_modules/jest-runner/build/runTest.js:444:34)\n    at Object.worker (/REPO/test/fixtures/runners/jest/node_modules/jest-runner/build/testWorker.js:106:12)"
+          ],
+          "fullName": "assertion fails",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 0,
+          "retryReasons": [],
+          "status": "failed",
+          "title": "assertion fails"
+        },
+        {
+          "ancestorTitles": [],
+          "duration": 1,
+          "failureDetails": [
+            {}
+          ],
+          "failureMessages": [
+            "TypeError: obj.boom is not a function\n    at Object.<anonymous> (/REPO/test/fixtures/runners/jest/src/behavior.spec.ts:7:7)\n    at Promise.then.completed (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at _runTest (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/run.js:126:9)\n    at run (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/REPO/test/fixtures/runners/jest/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/REPO/test/fixtures/runners/jest/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/REPO/test/fixtures/runners/jest/node_modules/jest-runner/build/runTest.js:444:34)\n    at Object.worker (/REPO/test/fixtures/runners/jest/node_modules/jest-runner/build/testWorker.js:106:12)"
+          ],
+          "fullName": "throws at runtime",
+          "invocations": 1,
+          "location": null,
+          "numPassingAsserts": 0,
+          "retryReasons": [],
+          "status": "failed",
+          "title": "throws at runtime"
+        }
+      ],
+      "endTime": 1795605244213,
+      "message": "  ● assertion fails\n\n    expect(received).toBe(expected) // Object.is equality\n\n    Expected: 3\n    Received: 2\n\n      1 | test('assertion fails', () => {\n    > 2 |   expect(1 + 1).toBe(3);\n        |                 ^\n      3 | });\n      4 |\n      5 | test('throws at runtime', () => {\n\n      at Object.<anonymous> (src/behavior.spec.ts:2:17)\n\n  ● throws at runtime\n\n    TypeError: obj.boom is not a function\n\n      5 | test('throws at runtime', () => {\n      6 |   const obj: { boom?: () => void } = {};\n    > 7 |   obj.boom!();\n        |       ^\n      8 | });\n      9 |\n\n      at Object.<anonymous> (src/behavior.spec.ts:7:7)\n",
+      "name": "/REPO/test/fixtures/runners/jest/src/behavior.spec.ts",
+      "startTime": 1795605243540,
+      "status": "failed",
+      "summary": ""
+    }
+  ],
+  "wasInterrupted": false
+}
