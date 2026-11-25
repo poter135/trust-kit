@@ -1,6 +1,7 @@
 // Evidence bundle: machine evidence an item needs before anyone may call it "fixed".
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { loadConfig } from './config.mjs';
 import { resolveCommit } from './git.mjs';
 import { loadItem } from './items.mjs';
@@ -41,6 +42,30 @@ function readRedGreen(p) {
     return { problem: `紅綠燈報告格式不符：schema=${JSON.stringify(report?.schema)}，應為 ${RED_GREEN_SCHEMA}。請使用 trust-kit red-green 產生的 trust-red-green artifact。` };
   }
   return { report };
+}
+
+const SHA256 = /^[0-9a-f]{64}$/;
+
+/**
+ * Re-checks every manifest entry against the files on disk. Returns one zh-TW problem per bad entry.
+ * @param {string} dir screens dir @param {unknown[]} files manifest `files`
+ * @returns {string[]}
+ */
+function verifyScreenFiles(dir, files) {
+  const problems = [];
+  files.forEach((f, i) => {
+    const rel = f && typeof f === 'object' ? /** @type {any} */ (f).path : undefined;
+    const sum = f && typeof f === 'object' ? /** @type {any} */ (f).sha256 : undefined;
+    const label = typeof rel === 'string' ? rel : `files[${i}]`;
+    if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) {
+      problems.push(`${label} 的 path 無效（必須是 screens 目錄內的相對路徑）`); return;
+    }
+    if (typeof sum !== 'string' || !SHA256.test(sum)) { problems.push(`${label} 的 sha256 無效（必須是 64 碼十六進位）`); return; }
+    let bytes;
+    try { bytes = fs.readFileSync(path.join(dir, rel)); } catch { problems.push(`${label} 檔案不存在`); return; }
+    if (createHash('sha256').update(bytes).digest('hex') !== sum) problems.push(`${label} 的內容在 collect 後被改過（sha256 不符）`);
+  });
+  return problems;
 }
 
 /** @param {string} repoRoot @param {string} rev */
@@ -91,11 +116,12 @@ export async function buildEvidence({ repoRoot, itemId, commit, redGreenPath, sc
     check('screens.files', n >= 1, n >= 1 ? `${n} file(s)`
       : `app／web 項目缺少畫面證據（screens）：${dir} 沒有 manifest.json 或沒有截圖。${howTo}`);
     if (screens) {
-      let scSha = screens.commit;
-      if (!FULL_SHA.test(scSha)) scSha = await resolveCommit(repoRoot, scSha).catch(() => scSha);
-      const ok = scSha === sha;
+      const ok = screens.commit === sha;
       check('screens.commit', ok, ok ? `commit=${short(sha)}`
-        : `畫面證據（screens）與目前 commit 不符：manifest commit=${short(screens.commit)}，目前 commit=${short(sha)}。請在目前 commit 上重新截圖，${howTo}`);
+        : `畫面證據（screens）與目前 commit 不符：manifest commit=${JSON.stringify(screens.commit)}，目前 commit=${short(sha)}（manifest 必須記錄完整 40 碼 SHA）。請在目前 commit 上重新截圖並重新執行 screens collect：${howTo}`);
+      const problems = verifyScreenFiles(dir, screens.files);
+      check('screens.integrity', problems.length === 0, problems.length === 0 ? 'all files match manifest'
+        : `畫面證據（screens）與 manifest 不符：${problems.join('；')}。請重新執行 screens collect：${howTo}`);
     }
   }
 

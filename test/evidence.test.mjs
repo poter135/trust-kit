@@ -172,3 +172,59 @@ test('CLI: evidence exits 1 with missing lines and writes default out; screens c
   assert.equal(r3.status, 0, r3.stderr);
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'ev.json'), 'utf8')).complete, true);
 });
+
+// F1 regression: the screens manifest must be real, current evidence.
+const shotsOf = (dir) => path.join(dir, 'shots');
+const rewriteManifest = (dir, fn) => {
+  const p = path.join(shotsOf(dir), 'manifest.json');
+  fs.writeFileSync(p, JSON.stringify(fn(JSON.parse(fs.readFileSync(p, 'utf8')))));
+};
+async function evidenceFor(dir, sha) {
+  return buildEvidence({ repoRoot: dir, itemId: 'fix-login', commit: sha, redGreenPath: writeReport(dir, report(sha)), screensDir: shotsOf(dir) });
+}
+
+test('F1: manifest commit "HEAD" (a ref, not a full SHA) → incomplete', async () => {
+  const { dir, sha } = setup();
+  writeScreens(dir, sha);
+  rewriteManifest(dir, (m) => ({ ...m, commit: 'HEAD' }));
+  const b = await evidenceFor(dir, sha);
+  assert.equal(b.complete, false);
+  assert.ok(b.missing.some((s) => s.includes('screens collect')), b.missing.join('\n'));
+});
+
+test('F1: manifest entry whose file was deleted → incomplete, names the file', async () => {
+  const { dir, sha } = setup();
+  writeScreens(dir, sha);
+  fs.rmSync(path.join(shotsOf(dir), 'login.png'));
+  const b = await evidenceFor(dir, sha);
+  assert.equal(b.complete, false);
+  assert.ok(b.missing.some((s) => s.includes('login.png') && s.includes('screens collect')), b.missing.join('\n'));
+});
+
+test('F1: file bytes changed after collect → incomplete, names the file', async () => {
+  const { dir, sha } = setup();
+  writeScreens(dir, sha);
+  fs.writeFileSync(path.join(shotsOf(dir), 'login.png'), 'tampered');
+  const b = await evidenceFor(dir, sha);
+  assert.equal(b.complete, false);
+  assert.ok(b.missing.some((s) => s.includes('login.png') && s.includes('screens collect')), b.missing.join('\n'));
+});
+
+test('F1: malformed manifest entries (traversal, absolute, bad sha256, non-object) → incomplete', async () => {
+  for (const bad of [{ path: '../x.png', sha256: 'a'.repeat(64) }, { path: '/etc/x.png', sha256: 'a'.repeat(64) },
+    { path: 'login.png', sha256: 'zz' }, 'junk', { sha256: 'a'.repeat(64) }]) {
+    const { dir, sha } = setup();
+    writeScreens(dir, sha);
+    rewriteManifest(dir, (m) => ({ ...m, files: [...m.files, bad] }));
+    const b = await evidenceFor(dir, sha);
+    assert.equal(b.complete, false, JSON.stringify(bad));
+    assert.ok(b.missing.some((s) => s.includes('screens collect')), b.missing.join('\n'));
+  }
+});
+
+test('F1: a fresh valid collect is still complete', async () => {
+  const { dir, sha } = setup();
+  writeScreens(dir, sha);
+  const b = await evidenceFor(dir, sha);
+  assert.equal(b.complete, true, b.missing.join('\n'));
+});
