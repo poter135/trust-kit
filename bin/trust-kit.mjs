@@ -32,13 +32,18 @@ const SUBCOMMANDS = {
     },
   },
   'red-green': {
-    desc: 'prove changed tests fail on base by behavior and pass on head (--base <rev> --head <rev> [--out <path>]); exit 1 only on head_fail or error',
+    desc: 'prove changed tests fail on base by behavior and pass on head (--base <rev> --head <rev> [--out <path>] [--ci-run-url <https url>, overrides the GITHUB_* derived URL]); exit 1 only on head_fail or error',
     async run(flags) {
       for (const f of ['base', 'head']) {
         if (typeof flags[f] !== 'string') throw new UsageError(`red-green: missing --${f} <rev>`);
       }
+      const ciUrl = flags['ci-run-url'];
+      if (ciUrl !== undefined && (typeof ciUrl !== 'string' || !/^https?:\/\/\S+$/.test(ciUrl))) {
+        throw new UsageError('red-green: --ci-run-url must be an http(s) URL');
+      }
       const repoRoot = await repoTopLevel(process.cwd());
       const report = await runRedGreen({ repoRoot, base: /** @type {string} */ (flags.base), head: /** @type {string} */ (flags.head) });
+      if (typeof ciUrl === 'string') report.ciRunUrl = ciUrl;
       const json = `${JSON.stringify(report, null, 2)}\n`;
       if (typeof flags.out === 'string') {
         fs.mkdirSync(path.dirname(path.resolve(flags.out)), { recursive: true });

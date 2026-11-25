@@ -1,0 +1,103 @@
+# trust-kit's own CI.
+# push: unit tests. pull_request: also red-green and protected, judged by the BASE commit's trust-kit code,
+# so a PR cannot change the judgement logic and then judge itself green.
+name: self-test
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Install Jest fixture (enables the live Jest runner test)
+        run: npm ci --prefix test/fixtures/runners/jest
+      - run: npm test
+
+  red-green:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out base trust-kit (the judge)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .trust-kit-base
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install base trust-kit
+        id: install
+        run: npm ci --prefix .trust-kit-base
+
+      - name: red-green (base judge)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node .trust-kit-base/bin/trust-kit.mjs red-green
+          --base "$BASE_SHA" --head "$HEAD_SHA" --out red-green.json --ci-run-url "$CI_RUN_URL"
+
+      - name: protected (base judge)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          node .trust-kit-base/bin/trust-kit.mjs protected --base "$BASE_SHA" --head "$HEAD_SHA" | tee protected.txt
+
+      - name: Upload trust-red-green
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: trust-red-green
+          path: |
+            red-green.json
+            protected.txt
+          if-no-files-found: warn
+
+      - name: Job summary
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          node --input-type=module - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import fs from 'node:fs';
+          const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
+          const out = ['## trust-kit red-green (judged by base)', ''];
+          const raw = read('red-green.json');
+          let rep = null;
+          try { rep = raw ? JSON.parse(raw) : null; } catch { rep = null; }
+          if (!rep) {
+            out.push('**verdict:** (no report — red-green errored; see the step log)');
+          } else {
+            out.push(`**verdict:** \`${rep.verdict}\``, '', `base \`${String(rep.base).slice(0, 12)}\` → head \`${String(rep.head).slice(0, 12)}\``);
+            if (rep.newlyEnforced?.length) out.push('', `**newlyEnforced:** ${rep.newlyEnforced.map((r) => `\`${r}\``).join(', ')}`);
+            if (rep.ruleProblems?.length) {
+              out.push('', '**ruleProblems:**');
+              for (const p of rep.ruleProblems) out.push(`- \`${p.ruleId}\`: ${p.problem}`);
+            }
+          }
+          const prot = (read('protected.txt') ?? '').split('\n').filter(Boolean);
+          out.push('', '### 改到驗證系統', '');
+          if (prot.length) for (const p of prot) out.push(`- \`${p}\``);
+          else out.push('（無）');
+          console.log(out.join('\n'));
+          EOF

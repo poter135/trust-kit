@@ -167,6 +167,25 @@ test('CLI red-green: --out writes the report with full SHAs, verdict on stderr, 
   }
 });
 
+test('CLI red-green: --ci-run-url is written into the report; a non-http value is a usage error', () => {
+  const { dir } = bugfixRepo();
+  try {
+    const out = path.join(dir, 'rg.json');
+    const { GITHUB_SERVER_URL, GITHUB_REPOSITORY, GITHUB_RUN_ID, ...env } = process.env;
+    const url = 'https://github.com/o/r/actions/runs/42';
+    const r = spawnSync(process.execPath, [bin, 'red-green', '--base', 'HEAD~1', '--head', 'HEAD', '--out', out, '--ci-run-url', url],
+      { cwd: dir, encoding: 'utf8', env: { ...env, NODE_TEST_CONTEXT: undefined } });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(JSON.parse(fs.readFileSync(out, 'utf8')).ciRunUrl, url);
+    const bad = spawnSync(process.execPath, [bin, 'red-green', '--base', 'HEAD~1', '--head', 'HEAD', '--ci-run-url', 'nope'],
+      { cwd: dir, encoding: 'utf8', env: { ...env, NODE_TEST_CONTEXT: undefined } });
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /--ci-run-url/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('CLI red-green: head_fail exits 1 and prints JSON to stdout without --out', () => {
   const dir = makeRepo();
   try {

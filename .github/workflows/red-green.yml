@@ -1,0 +1,144 @@
+# Reusable red/green check for pull requests.
+# Caller:
+#   jobs:
+#     red-green:
+#       uses: poter135/trust-kit/.github/workflows/red-green.yml@v0.3.0
+#       with:
+#         setup-command: npm ci --prefix functions
+# The trust-kit version that judges the PR is read from the caller's tools/trust-kit.version
+# (a tag or commit of poter135/trust-kit), not from the workflow ref.
+name: trust-kit red-green
+
+on:
+  workflow_call:
+    inputs:
+      flutter-version:
+        description: Flutter version to install; empty string means no Flutter.
+        type: string
+        default: ''
+      node-version:
+        description: Node.js version for trust-kit and the caller's tests.
+        type: string
+        default: '22'
+      setup-command:
+        description: Caller's install command, run with bash at the repo root (e.g. `npm ci --prefix functions && flutter pub get`).
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  red-green:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a pull_request event
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "::error::trust-kit red-green needs a pull_request event (got ${GITHUB_EVENT_NAME})"
+          exit 1
+
+      - name: Check out caller
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read trust-kit version
+        id: version
+        run: |
+          f=tools/trust-kit.version
+          if [ ! -f "$f" ]; then echo "::error file=$f::missing $f (put a trust-kit tag or commit in it)"; exit 1; fi
+          ref="$(tr -d '[:space:]' < "$f")"
+          if [ -z "$ref" ]; then echo "::error file=$f::$f is empty"; exit 1; fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Check out trust-kit
+        uses: actions/checkout@v4
+        with:
+          repository: poter135/trust-kit
+          ref: ${{ steps.version.outputs.ref }}
+          path: .trust-kit
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Set up Flutter
+        if: inputs.flutter-version != ''
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ inputs.flutter-version }}
+          cache: true
+
+      - name: Install trust-kit
+        id: install
+        run: npm ci --prefix .trust-kit
+
+      - name: Caller setup
+        if: inputs.setup-command != ''
+        env:
+          SETUP_COMMAND: ${{ inputs.setup-command }}
+        run: bash -euo pipefail -c "$SETUP_COMMAND"
+
+      - name: red-green
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node .trust-kit/bin/trust-kit.mjs red-green
+          --base "$BASE_SHA" --head "$HEAD_SHA" --out red-green.json --ci-run-url "$CI_RUN_URL"
+
+      - name: protected
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          node .trust-kit/bin/trust-kit.mjs protected --base "$BASE_SHA" --head "$HEAD_SHA" | tee protected.txt
+
+      - name: ledger verify
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node .trust-kit/bin/trust-kit.mjs ledger verify --base "$BASE_SHA" --head "$HEAD_SHA"
+
+      - name: Upload trust-red-green
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: trust-red-green
+          path: |
+            red-green.json
+            protected.txt
+          if-no-files-found: warn
+
+      - name: Job summary
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          node --input-type=module - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import fs from 'node:fs';
+          const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
+          const out = ['## trust-kit red-green', ''];
+          const raw = read('red-green.json');
+          let rep = null;
+          try { rep = raw ? JSON.parse(raw) : null; } catch { rep = null; }
+          if (!rep) {
+            out.push('**verdict:** (no report — red-green errored; see the step log)');
+          } else {
+            out.push(`**verdict:** \`${rep.verdict}\``, '', `base \`${String(rep.base).slice(0, 12)}\` → head \`${String(rep.head).slice(0, 12)}\``);
+            if (rep.newlyEnforced?.length) out.push('', `**newlyEnforced:** ${rep.newlyEnforced.map((r) => `\`${r}\``).join(', ')}`);
+            if (rep.ruleProblems?.length) {
+              out.push('', '**ruleProblems:**');
+              for (const p of rep.ruleProblems) out.push(`- \`${p.ruleId}\`: ${p.problem}`);
+            }
+          }
+          const prot = (read('protected.txt') ?? '').split('\n').filter(Boolean);
+          out.push('', '### 改到驗證系統', '');
+          if (prot.length) for (const p of prot) out.push(`- \`${p}\``);
+          else out.push('（無）');
+          console.log(out.join('\n'));
+          EOF

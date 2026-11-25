@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "runners": [
+    { "id": "node-test", "adapter": "node-test", "cwd": ".", "testGlobs": ["test/**/*.test.mjs"], "setup": [["npm", "ci"]] }
+  ],
+  "protectedPaths": [
+    "src/redgreen/**",
+    "src/protected.mjs",
+    "src/rules.mjs",
+    "src/approval.mjs",
+    ".github/workflows/**",
+    "test/boundaries.test.mjs"
+  ],
+  "evidence": { "outDir": ".trust/evidence", "screensDir": ".trust/screens" },
+  "ledger": { "path": ".trust/ledger.md" }
+}
