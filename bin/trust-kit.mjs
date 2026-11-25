@@ -6,6 +6,8 @@ import { loadConfig, TrustConfigError } from '../src/config.mjs';
 import { repoTopLevel } from '../src/git.mjs';
 import { runRedGreen } from '../src/redgreen/run.mjs';
 import { verifyRules, rulesReport, RulesError } from '../src/rules.mjs';
+import { detectProtectedChanges } from '../src/protected.mjs';
+import { verifyLedger } from '../src/ledger.mjs';
 
 /** Thrown for bad CLI input; printed without a stack, exit 1 (or `exitCode`). */
 class UsageError extends Error {
@@ -57,6 +59,31 @@ const SUBCOMMANDS = {
       }
       if (action === 'report') { process.stdout.write(rulesReport({ repoRoot: root })); return 0; }
       throw new UsageError(`rules: ${action ? `unknown action "${action}"` : 'missing action'}; use \`rules verify\` or \`rules report\``, 2);
+    },
+  },
+  protected: {
+    desc: 'list changed protected paths, one per line (--base <rev> --head <rev>; diffs from their merge-base; exit 0)',
+    async run(flags) {
+      for (const f of ['base', 'head']) {
+        if (typeof flags[f] !== 'string') throw new UsageError(`protected: missing --${f} <rev>`);
+      }
+      const repoRoot = await repoTopLevel(process.cwd());
+      const paths = await detectProtectedChanges({ repoRoot, base: /** @type {string} */ (flags.base), head: /** @type {string} */ (flags.head) });
+      for (const p of paths) console.log(p);
+      return 0;
+    },
+  },
+  ledger: {
+    desc: '`ledger verify --base <rev> [--head <rev>] [--path <file>]`: the ledger must only be appended to since merge-base (exit 1 otherwise); path defaults to config ledger.path',
+    async run(flags, positional) {
+      const [action] = positional;
+      if (action !== 'verify') throw new UsageError(`ledger: ${action ? `unknown action "${action}"` : 'missing action'}; use \`ledger verify\``, 2);
+      if (typeof flags.base !== 'string') throw new UsageError('ledger verify: missing --base <rev>');
+      const repoRoot = await repoTopLevel(process.cwd());
+      const file = typeof flags.path === 'string' ? flags.path : loadConfig(repoRoot).ledger.path;
+      const res = await verifyLedger({ repoRoot, path: file, base: flags.base, ...(typeof flags.head === 'string' ? { head: flags.head } : {}) });
+      console.error(res.ok ? 'ledger verify: ok' : `ledger verify: ${res.problem}`);
+      return res.ok ? 0 : 1;
     },
   },
 };

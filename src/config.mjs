@@ -40,6 +40,14 @@ export function loadConfig(repoRoot) {
     throw new TrustConfigError(CONFIG_FILE, `cannot read ${file} (${e.code ?? e.message})`,
       `create ${CONFIG_FILE} at the repo root`);
   }
+  return parseConfig(text, file);
+}
+
+/**
+ * Parses and validates config JSON text. @param {string} text @param {string} file label used in error messages
+ * @returns {TrustConfig}
+ */
+export function parseConfig(text, file) {
   let raw;
   try {
     raw = JSON.parse(text);
