@@ -10,7 +10,9 @@ import { detectProtectedChanges } from '../src/protected.mjs';
 import { verifyLedger } from '../src/ledger.mjs';
 import { collectScreens } from '../src/screens.mjs';
 import { buildEvidence } from '../src/evidence.mjs';
-import { ItemError } from '../src/items.mjs';
+import { ItemError, loadItem, assertItemId } from '../src/items.mjs';
+import { buildPacket, writePacket } from '../src/packet.mjs';
+import { recordApproval, checkApproval, ApprovalError } from '../src/approval.mjs';
 import { resolveCommit } from '../src/git.mjs';
 
 /** Thrown for bad CLI input; printed without a stack, exit 1 (or `exitCode`). */
@@ -127,6 +129,63 @@ const SUBCOMMANDS = {
       return 1;
     },
   },
+  packet: {
+    desc: 'build the review packet (--items B1,B2 --base <rev> [--head <rev>, default HEAD] --out <md>); also writes <md>.json and .trust/packets/<id>.json; prints the packet id',
+    async run(flags) {
+      for (const f of ['items', 'base', 'out']) {
+        if (typeof flags[f] !== 'string') throw new UsageError(`packet: missing --${f}`);
+      }
+      const repoRoot = await repoTopLevel(process.cwd());
+      const head = await resolveCommit(repoRoot, typeof flags.head === 'string' ? flags.head : 'HEAD');
+      const outDir = loadConfig(repoRoot).evidence.outDir;
+      const ids = /** @type {string} */ (flags.items).split(',').map((s) => s.trim()).filter(Boolean);
+      if (ids.length === 0) throw new UsageError('packet: --items is empty');
+      const items = ids.map((id) => {
+        assertItemId(id);
+        const item = loadItem(repoRoot, id);
+        const file = path.join(repoRoot, outDir, `${id}.json`);
+        let evidence = null;
+        try { evidence = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { evidence = null; }
+        return { item, evidence };
+      });
+      const protectedChanges = await detectProtectedChanges({ repoRoot, base: /** @type {string} */ (flags.base), head });
+      const packet = buildPacket({ repoRoot, head, items, protectedChanges });
+      const out = path.resolve(/** @type {string} */ (flags.out));
+      writePacket({ repoRoot, packet, head, out });
+      const flagged = packet.entries.filter((e) => e.flagged.length > 0).length;
+      console.log(packet.id);
+      console.error(`packet ${packet.id}: ${packet.entries.length} entr(ies), ${flagged} flagged, head ${head.slice(0, 12)} → ${out}`);
+      return 0;
+    },
+  },
+  approve: {
+    desc: 'record the user\'s chat approval of packet entries (--packet <id> --numbers 1,3 [--allow-flagged]) into .trust/approvals/<id>.json',
+    async run(flags) {
+      for (const f of ['packet', 'numbers']) {
+        if (typeof flags[f] !== 'string') throw new UsageError(`approve: missing --${f}`);
+      }
+      const numbers = /** @type {string} */ (flags.numbers).split(',').map((s) => s.trim());
+      if (!numbers.every((s) => /^[1-9]\d*$/.test(s))) throw new UsageError(`approve: --numbers must be positive integers, e.g. 1,3`);
+      const repoRoot = await repoTopLevel(process.cwd());
+      const rec = recordApproval({ repoRoot, packetId: /** @type {string} */ (flags.packet), numbers: numbers.map(Number), allowFlagged: flags['allow-flagged'] === true });
+      console.error(`approve: packet ${rec.packetId}, approved ${rec.entries.map((e) => e.n).join(',')} (head ${String(rec.head).slice(0, 12)})`);
+      return 0;
+    },
+  },
+  'check-approval': {
+    desc: 'exit 0 only if an approval record covers --kind <k> --target <t> --commit <sha> exactly (batch-write: --commit is the plan hash, compared as given); exit 1 with the reason otherwise',
+    async run(flags) {
+      for (const f of ['kind', 'target', 'commit']) {
+        if (typeof flags[f] !== 'string') throw new UsageError(`check-approval: missing --${f}`);
+      }
+      const repoRoot = await repoTopLevel(process.cwd());
+      let commit = /** @type {string} */ (flags.commit);
+      if (flags.kind !== 'batch-write' && !/^[0-9a-f]{40}$/.test(commit)) commit = await resolveCommit(repoRoot, commit);
+      const res = checkApproval({ repoRoot, kind: /** @type {string} */ (flags.kind), target: /** @type {string} */ (flags.target), commit });
+      console.error(res.ok ? `check-approval: ok (${flags.kind}/${flags.target}/${commit})` : `check-approval: ${res.reason}`);
+      return res.ok ? 0 : 1;
+    },
+  },
 };
 
 /** @param {string[]} args @returns {{ flags: Record<string, string|boolean>, positional: string[] }} */
@@ -160,7 +219,7 @@ try {
   process.exitCode = await SUBCOMMANDS[sub].run(flags, positional);
 } catch (e) {
   if (e instanceof UsageError) { console.error(e.message); process.exit(e.exitCode); }
-  if (e instanceof TrustConfigError || e instanceof RulesError || e instanceof ItemError) { console.error(e.message); process.exit(1); }
+  if (e instanceof TrustConfigError || e instanceof RulesError || e instanceof ItemError || e instanceof ApprovalError) { console.error(e.message); process.exit(1); }
   console.error(e instanceof Error ? (e.stack ?? e.message) : String(e));
   process.exit(1);
 }
