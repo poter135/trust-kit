@@ -23,6 +23,20 @@ test('parseJestJson classifies recorded output; ts-jest type error is load_fail'
   assert.doesNotMatch(load.message, /\u001b\[/, 'ANSI colour codes are stripped');
 });
 
+test('parseJestJson: a test that fails because a module cannot be found is load_fail, not behavior_fail', () => {
+  const json = { testResults: [{
+    name: '/r/a.spec.ts', status: 'failed', message: '',
+    assertionResults: [
+      { fullName: 'missing', status: 'failed', failureMessages: ["Cannot find module '../src/checker' from 'a.spec.ts'"] },
+      { fullName: 'real', status: 'failed', failureMessages: ['expect(received).toBe(expected)\n\nExpected: 2\nReceived: 1'] },
+    ],
+  }] };
+  assert.deepEqual(brief(parseJestJson(json, '/r')), [
+    { file: 'a.spec.ts', name: 'missing', status: 'load_fail' },
+    { file: 'a.spec.ts', name: 'real', status: 'behavior_fail' },
+  ]);
+});
+
 test('parseJestJson: failed suite whose assertions all passed is load_fail (never behavior_fail), pending/todo map to skip', () => {
   const json = { testResults: [{
     name: '/r/a.spec.ts', status: 'failed', message: 'afterAll threw',

@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  LOAD_NAME, FILE_NAME, clip, fillMissing, parseJsonLine, processSummary, resolveFiles, runProcess, stripAnsi, toRepoPath,
+  LOAD_NAME, FILE_NAME, clip, fillMissing, isModuleNotFound, parseJsonLine, processSummary, resolveFiles, runProcess, stripAnsi, toRepoPath,
 } from './common.mjs';
 
 /** @typedef {import('./common.mjs').TestResult} TestResult */
@@ -14,7 +14,8 @@ const REPORTER = path.join(path.dirname(fileURLToPath(import.meta.url)), 'node-t
  * - A file-level failure with no test results from that file → one `load_fail` for the file
  *   (the file never got as far as running a test: import/syntax errors, top-level throws).
  * - A file-level failure after the file produced test results → an extra `(file)` `load_fail`.
- * - A failing test → `behavior_fail`; skip/todo → `skip`.
+ * - A failing test → `behavior_fail`, unless its error says a module could not be found → `load_fail`;
+ *   skip/todo → `skip`.
  * Messages for file-level results carry the file's stderr and error diagnostics.
  * - Suites, and parents failing only because a subtest failed, are not reported separately;
  *   nested tests are named `parent > child`.
@@ -58,7 +59,10 @@ export function parseNodeTestEvents(lines, root) {
       if (node.suite || (node.children.length && (node.type === 'pass' || onlySubtests))) return;
       if (node.skip || node.todo) out.push({ file, name, status: 'skip' });
       else if (node.type === 'pass') out.push({ file, name, status: 'pass' });
-      else out.push({ file, name, status: 'behavior_fail', message: clip(stripAnsi(node.message ?? '')) });
+      else {
+        const message = clip(stripAnsi(node.message ?? ''));
+        out.push({ file, name, status: isModuleNotFound(message) ? 'load_fail' : 'behavior_fail', message });
+      }
     };
     e.pending.forEach((n) => emit(n, ''));
     const hadTests = e.pending.length > 0;

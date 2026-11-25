@@ -23,6 +23,15 @@ const ANSI_RE = /\u001b\[[0-9;]*[A-Za-z]/g;
 /** @param {string} s */
 export const stripAnsi = (s) => String(s ?? '').replace(ANSI_RE, '');
 
+const MODULE_NOT_FOUND_RE = /\bERR_MODULE_NOT_FOUND\b|\bMODULE_NOT_FOUND\b|Cannot find module|Cannot find package/;
+/**
+ * True when a failing test's message says a module could not be found. Such a failure only shows that the code under
+ * test does not exist yet (the same as an import error at file load), so adapters classify it as `load_fail`, never
+ * as `behavior_fail`. Fail-safe: an assertion message that merely mentions these words is also not counted as a red.
+ * @param {string} message
+ */
+export const isModuleNotFound = (message) => MODULE_NOT_FOUND_RE.test(String(message ?? ''));
+
 /** @param {string} s @param {number} [max] keep the end, where the real error usually is */
 export const clip = (s, max = 4000) => (s.length > max ? `…${s.slice(-max)}` : s);
 

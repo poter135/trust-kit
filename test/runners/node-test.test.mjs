@@ -77,3 +77,27 @@ test('node-test runner: module-load failure after tests registered is load_fail 
   assert.match(file.message, /ERR_MODULE_NOT_FOUND|Cannot find module/);
   assert.ok(!results.some((r) => r.status === 'behavior_fail'), 'must never look like a valid red');
 });
+
+test('parseNodeTestEvents: module-not-found thrown inside a test body is load_fail, not behavior_fail', () => {
+  const ev = (name, message) => JSON.stringify({ type: 'fail', file: '/r/a.mjs', name, isFile: false, nesting: 0, failureType: 'testCodeFailure', message });
+  const lines = [
+    ev('esm', "Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/r/checker.mjs' imported from /r/a.mjs"),
+    ev('cjs', "Error: Cannot find module './checker.cjs'\nRequire stack:\n- /r/a.mjs"),
+    ev('pkg', "Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'left-pad' imported from /r/a.mjs"),
+    ev('real', 'AssertionError: Expected values to be strictly equal:\n1 !== 2'),
+  ];
+  assert.deepEqual(brief(parseNodeTestEvents(lines, '/r')), [
+    { file: 'a.mjs', name: 'cjs', status: 'load_fail' },
+    { file: 'a.mjs', name: 'esm', status: 'load_fail' },
+    { file: 'a.mjs', name: 'pkg', status: 'load_fail' },
+    { file: 'a.mjs', name: 'real', status: 'behavior_fail' },
+  ]);
+});
+
+test('node-test runner: import/require of a missing module inside a test body is load_fail', async () => {
+  const results = await getRunner('node-test').run({ cwd: dir, repoRoot, files: [rel('missing-in-body.fx.mjs')] });
+  assert.deepEqual(brief(results), [
+    { file: rel('missing-in-body.fx.mjs'), name: 'imports a module that does not exist yet', status: 'load_fail' },
+    { file: rel('missing-in-body.fx.mjs'), name: 'requires a module that does not exist yet', status: 'load_fail' },
+  ]);
+});

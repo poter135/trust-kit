@@ -3,14 +3,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  LOAD_NAME, FILE_NAME, clip, fillMissing, processSummary, resolveFiles, runProcess, stripAnsi, toRepoPath,
+  LOAD_NAME, FILE_NAME, clip, fillMissing, isModuleNotFound, processSummary, resolveFiles, runProcess, stripAnsi, toRepoPath,
 } from './common.mjs';
 
 /** @typedef {import('./common.mjs').TestResult} TestResult */
 
 /**
  * Classifies a Jest `--json` report.
- * - `assertionResults[].status === 'failed'` → `behavior_fail`; passed → `pass`; pending/todo/skipped → `skip`.
+ * - `assertionResults[].status === 'failed'` → `behavior_fail` (`load_fail` when the failure says a module could not
+ *   be found); passed → `pass`; pending/todo/skipped → `skip`.
  * - A failed suite with no assertion results → one `load_fail` for the file (includes ts-jest type errors).
  * - A failed suite whose assertions all passed (e.g. afterAll threw) → an extra `(file)` `load_fail`
  *   carrying the suite's error message (never `behavior_fail`: no test's behavior was shown to fail).
@@ -35,7 +36,8 @@ export function parseJestJson(json, cwd) {
       if (a.status === 'passed') out.push({ file, name, status: 'pass' });
       else if (a.status === 'failed') {
         anyFailed = true;
-        out.push({ file, name, status: 'behavior_fail', message: clip(stripAnsi((a.failureMessages ?? []).join('\n'))) });
+        const message = clip(stripAnsi((a.failureMessages ?? []).join('\n')));
+        out.push({ file, name, status: isModuleNotFound(message) ? 'load_fail' : 'behavior_fail', message });
       } else out.push({ file, name, status: 'skip' });
     }
     if (suite.status === 'failed' && !anyFailed) {
