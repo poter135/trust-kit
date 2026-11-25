@@ -31,13 +31,14 @@ const isStr = (v) => typeof v === 'string' && v.length > 0;
 export function loadItem(repoRoot, id) {
   assertItemId(id);
   const file = path.join(repoRoot, ITEMS_DIR, `${id}.json`);
+  const shown = `${ITEMS_DIR}/${id}.json`;
   let raw;
   try {
     raw = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (e) {
-    throw new ItemError(`${file}: cannot read item (${e.code ?? e.message}). Fix: create ${ITEMS_DIR}/${id}.json`);
+    throw new ItemError(`${shown}: cannot read item (${e.code ?? e.message}). Fix: create ${ITEMS_DIR}/${id}.json`);
   }
-  const fail = (field, problem) => { throw new ItemError(`${file}: ${field}: ${problem}`); };
+  const fail = (field, problem) => { throw new ItemError(`${shown}: ${field}: ${problem}`); };
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) fail('(root)', 'must be a JSON object');
   if (raw.id !== id) fail('id', `must equal the file name "${id}"`);
   if (!isStr(raw.title)) fail('title', 'must be a non-empty string');

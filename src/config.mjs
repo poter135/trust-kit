@@ -37,10 +37,10 @@ export function loadConfig(repoRoot) {
   try {
     text = fs.readFileSync(file, 'utf8');
   } catch (e) {
-    throw new TrustConfigError(CONFIG_FILE, `cannot read ${file} (${e.code ?? e.message})`,
+    throw new TrustConfigError(CONFIG_FILE, `cannot read ${CONFIG_FILE} (${e.code ?? e.message})`,
       `create ${CONFIG_FILE} at the repo root`);
   }
-  return parseConfig(text, file);
+  return parseConfig(text, CONFIG_FILE);
 }
 
 /**

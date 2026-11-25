@@ -6,6 +6,7 @@ import { loadConfig } from './config.mjs';
 import { resolveCommit } from './git.mjs';
 import { loadItem } from './items.mjs';
 import { readScreens } from './screens.mjs';
+import { displayPath } from './paths.mjs';
 
 export const RED_GREEN_SCHEMA = 'trust-kit/red-green@1';
 const FULL_SHA = /^[0-9a-f]{40}$/;
@@ -30,13 +31,13 @@ function verdictFix(v) {
   }
 }
 
-/** @param {string} p @returns {{ report?: any, problem?: string }} */
-function readRedGreen(p) {
+/** @param {string} p absolute @param {string} shown display path @returns {{ report?: any, problem?: string }} */
+function readRedGreen(p, shown) {
   let report;
   try {
     report = JSON.parse(fs.readFileSync(p, 'utf8'));
   } catch (e) {
-    return { problem: `讀不到紅綠燈報告 ${p}（${e.code ?? e.message}）。請從 CI 下載目前 commit 的 trust-red-green artifact，並以 --red-green 指向其中的 JSON。` };
+    return { problem: `讀不到紅綠燈報告 ${shown}（${e.code ?? e.message}）。請從 CI 下載目前 commit 的 trust-red-green artifact，並以 --red-green 指向其中的 JSON。` };
   }
   if (!report || report.schema !== RED_GREEN_SCHEMA) {
     return { problem: `紅綠燈報告格式不符：schema=${JSON.stringify(report?.schema)}，應為 ${RED_GREEN_SCHEMA}。請使用 trust-kit red-green 產生的 trust-red-green artifact。` };
@@ -86,7 +87,8 @@ export async function buildEvidence({ repoRoot, itemId, commit, redGreenPath, sc
   const checks = [];
   const check = (name, ok, detail) => checks.push({ name, ok, detail });
 
-  const { report, problem } = readRedGreen(path.resolve(repoRoot, redGreenPath));
+  const rgAbs = path.resolve(repoRoot, redGreenPath);
+  const { report, problem } = readRedGreen(rgAbs, displayPath(repoRoot, rgAbs));
   const redGreen = {
     verdict: typeof report?.verdict === 'string' ? report.verdict : null,
     ciRunUrl: typeof report?.ciRunUrl === 'string' && report.ciRunUrl ? report.ciRunUrl : null,
@@ -111,10 +113,11 @@ export async function buildEvidence({ repoRoot, itemId, commit, redGreenPath, sc
   if (item.surfaces.includes('app') || item.surfaces.includes('web')) {
     const dir = path.resolve(repoRoot, screensDir ?? path.join(config.evidence.screensDir, itemId));
     screens = readScreens(dir);
-    const howTo = `請截圖或錄影後執行 \`trust-kit screens collect --dir ${dir} --commit ${sha}\`，再以 --screens ${dir} 重跑 evidence。`;
+    const shown = displayPath(repoRoot, dir);
+    const howTo = `請截圖或錄影後執行 \`trust-kit screens collect --dir ${shown} --commit ${sha}\`，再以 --screens ${shown} 重跑 evidence。`;
     const n = screens?.files.length ?? 0;
     check('screens.files', n >= 1, n >= 1 ? `${n} file(s)`
-      : `app／web 項目缺少畫面證據（screens）：${dir} 沒有 manifest.json 或沒有截圖。${howTo}`);
+      : `app／web 項目缺少畫面證據（screens）：${shown} 沒有 manifest.json 或沒有截圖。${howTo}`);
     if (screens) {
       const ok = screens.commit === sha;
       check('screens.commit', ok, ok ? `commit=${short(sha)}`

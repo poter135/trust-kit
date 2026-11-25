@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { PACKETS_DIR, BATCH_WRITE_UNSUPPORTED } from './packet.mjs';
+import { displayPath } from './paths.mjs';
 
 export const APPROVALS_DIR = '.trust/approvals';
 const PACKET_ID = /^[0-9a-f]{12}$/;
@@ -29,7 +30,7 @@ export function recordApproval({ repoRoot, packetId, numbers, allowFlagged = fal
   const packetFile = path.join(repoRoot, PACKETS_DIR, `${packetId}.json`);
   let packet;
   try { packet = readJson(packetFile); } catch (e) {
-    throw new ApprovalError(`找不到審查包 ${packetId}（${packetFile}：${e.code ?? e.message}）。請先執行 trust-kit packet`);
+    throw new ApprovalError(`找不到審查包 ${packetId}（${displayPath(repoRoot, packetFile)}：${e.code ?? e.message}）。請先執行 trust-kit packet`);
   }
   if (!Array.isArray(numbers) || numbers.length === 0) throw new ApprovalError('沒有指定要核准的編號');
   const now = new Date().toISOString();

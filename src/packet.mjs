@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { loadConfig } from './config.mjs';
+import { scrubRepoRoot } from './paths.mjs';
 
 export const PACKETS_DIR = '.trust/packets';
 /** Stage 1 binds approvals to the git head only; batch-write plan hashes arrive in stage 2. */
@@ -20,16 +21,17 @@ const short = (s) => String(s ?? '').slice(0, 12);
 /**
  * Per-item problems a reviewer must see before approving.
  * @param {import('./items.mjs').Item} item @param {import('./evidence.mjs').EvidenceBundle|null|undefined} ev @param {string} head
+ * @param {string} repoRoot absolute paths under it in old bundles' `missing` are shown repo-relative
  * @returns {string[]}
  */
-function itemFlags(item, ev, head) {
+function itemFlags(item, ev, head, repoRoot) {
   if (!ev) return [`沒有證據包，請先執行 trust-kit evidence --item ${item.id}`];
   const out = [];
   if (ev.commit !== head) out.push(`證據包是舊 commit 的：證據包 commit=${short(ev.commit)}，審查包 head=${short(head)}。請在目前 commit 重新執行 trust-kit evidence --item ${item.id}`);
   if (ev.redGreen?.verdict !== 'valid_red') out.push(`紅綠燈判定不是 valid_red：${ev.redGreen?.verdict ?? '（沒有判定）'}`);
   if (ev.complete !== true) {
     const missing = Array.isArray(ev.missing) && ev.missing.length > 0 ? ev.missing : ['（證據包未列出原因）'];
-    for (const m of missing) out.push(`證據不完整：${m}`);
+    for (const m of missing) out.push(`證據不完整：${scrubRepoRoot(repoRoot, m)}`);
   }
   return out;
 }
@@ -51,7 +53,7 @@ export function buildPacket({ repoRoot, head, items, protectedChanges }) {
   const attention = protectedChanges.map((p) => `- 驗證系統改動：\`${p}\``);
   const blocks = [];
   for (const { item, evidence } of items) {
-    const flags = itemFlags(item, evidence, head);
+    const flags = itemFlags(item, evidence, head, repoRoot);
     const mine = [];
     for (const a of item.approvals.length > 0 ? item.approvals : [null]) {
       const e = { n: entries.length + 1, item: item.id, kind: a ? a.kind : null, target: a ? a.target : null,

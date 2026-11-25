@@ -14,6 +14,7 @@ import { ItemError, loadItem, assertItemId } from '../src/items.mjs';
 import { buildPacket, writePacket } from '../src/packet.mjs';
 import { recordApproval, checkApproval, ApprovalError } from '../src/approval.mjs';
 import { resolveCommit } from '../src/git.mjs';
+import { displayPath } from '../src/paths.mjs';
 
 /** Thrown for bad CLI input; printed without a stack, exit 1 (or `exitCode`). */
 class UsageError extends Error {
@@ -109,7 +110,7 @@ const SUBCOMMANDS = {
       const commit = await resolveCommit(repoRoot, /** @type {string} */ (flags.commit));
       const dir = path.resolve(/** @type {string} */ (flags.dir));
       const m = collectScreens({ dir, commit });
-      console.error(`screens collect: ${m.files.length} file(s) for ${commit.slice(0, 12)} → ${path.join(dir, 'manifest.json')}`);
+      console.error(`screens collect: ${m.files.length} file(s) for ${commit.slice(0, 12)} → ${displayPath(repoRoot, path.join(dir, 'manifest.json'))}`);
       return 0;
     },
   },
@@ -128,9 +129,9 @@ const SUBCOMMANDS = {
       const out = typeof flags.out === 'string' ? path.resolve(flags.out) : path.join(repoRoot, loadConfig(repoRoot).evidence.outDir, `${itemId}.json`);
       fs.mkdirSync(path.dirname(out), { recursive: true });
       fs.writeFileSync(out, `${JSON.stringify(bundle, null, 2)}\n`);
-      if (bundle.complete) { console.error(`evidence: complete (${bundle.commit.slice(0, 12)}) → ${out}`); return 0; }
+      if (bundle.complete) { console.error(`evidence: complete (${bundle.commit.slice(0, 12)}) → ${displayPath(repoRoot, out)}`); return 0; }
       for (const m of bundle.missing) console.error(`✗ ${m}`);
-      console.error(`evidence: incomplete, ${bundle.missing.length} gap(s) → ${out}`);
+      console.error(`evidence: incomplete, ${bundle.missing.length} gap(s) → ${displayPath(repoRoot, out)}`);
       return 1;
     },
   },
@@ -159,7 +160,7 @@ const SUBCOMMANDS = {
       writePacket({ repoRoot, packet, head, out });
       const flagged = packet.entries.filter((e) => e.flagged.length > 0).length;
       console.log(packet.id);
-      console.error(`packet ${packet.id}: ${packet.entries.length} entr(ies), ${flagged} flagged, head ${head.slice(0, 12)} → ${out}`);
+      console.error(`packet ${packet.id}: ${packet.entries.length} entr(ies), ${flagged} flagged, head ${head.slice(0, 12)} → ${displayPath(repoRoot, out)}`);
       return 0;
     },
   },
