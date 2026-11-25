@@ -27,6 +27,11 @@ export async function resolveCommit(repoRoot, rev) {
   return (await git(repoRoot, ['rev-parse', '--verify', '--end-of-options', `${rev}^{commit}`])).trim();
 }
 
+/** @param {string} repoRoot @param {string} a @param {string} b @returns {Promise<string>} merge-base SHA */
+export async function mergeBase(repoRoot, a, b) {
+  return (await git(repoRoot, ['merge-base', a, b])).trim();
+}
+
 /**
  * `git diff --name-status` between two revs. Renames are reported as a delete plus an add.
  * @param {string} repoRoot @param {string} base @param {string} head

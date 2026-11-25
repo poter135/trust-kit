@@ -8,7 +8,9 @@ export const ADAPTERS = /** @type {const} */ (['flutter', 'jest', 'node-test']);
 export const ALWAYS_PROTECTED = Object.freeze(['trust.config.json', 'tools/trust-kit.version', '.trust/rules.json']);
 
 /**
- * @typedef {{ id: string, adapter: 'flutter'|'jest'|'node-test', cwd: string, testGlobs: string[], command?: string[] }} RunnerConfig
+ * @typedef {{ id: string, adapter: 'flutter'|'jest'|'node-test', cwd: string, testGlobs: string[], command?: string[], setup?: string[][] }} RunnerConfig
+ *   `setup`: argv arrays run (no shell) in the runner's cwd of each temporary checkout before its tests,
+ *   e.g. [["npm", "ci"]] — temporary checkouts have no installed dependencies.
  * @typedef {{ version: 1, runners: RunnerConfig[], protectedPaths: string[],
  *   evidence: { outDir: string, screensDir: string }, ledger: { path: string } }} TrustConfig
  */
@@ -73,6 +75,10 @@ export function loadConfig(repoRoot) {
     /** @type {RunnerConfig} */
     const out = { id, adapter: r.adapter, cwd: str(r.cwd, `${at}.cwd`), testGlobs: strArr(r.testGlobs, `${at}.testGlobs`, { nonEmpty: true }) };
     if (r.command !== undefined) out.command = strArr(r.command, `${at}.command`, { nonEmpty: true });
+    if (r.setup !== undefined) {
+      if (!Array.isArray(r.setup)) fail(`${at}.setup`, 'must be an array of argv arrays', `set "${at}.setup" to e.g. [["npm", "ci"]]`);
+      out.setup = r.setup.map((cmd, j) => strArr(cmd, `${at}.setup[${j}]`, { nonEmpty: true }));
+    }
     return out;
   });
 

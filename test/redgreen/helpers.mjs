@@ -34,9 +34,9 @@ export function commit(dir, files, msg = 'c') {
   return git(dir, 'rev-parse', 'HEAD');
 }
 
-export const nodeTestConfig = (globs = ['test/**/*.test.mjs']) => JSON.stringify({
+export const nodeTestConfig = (globs = ['test/**/*.test.mjs'], extra = {}) => JSON.stringify({
   version: 1,
-  runners: [{ id: 'unit', adapter: 'node-test', cwd: '.', testGlobs: globs }],
+  runners: [{ id: 'unit', adapter: 'node-test', cwd: '.', testGlobs: globs, ...extra }],
   evidence: { outDir: '.trust/evidence', screensDir: '.trust/screens' },
   ledger: { path: '.trust/ledger.md' },
 });

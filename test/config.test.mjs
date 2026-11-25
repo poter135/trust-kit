@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
 import { loadConfig, TrustConfigError, ALWAYS_PROTECTED } from '../src/config.mjs';
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
@@ -49,4 +51,41 @@ test('missing config file throws TrustConfigError with fix hint', () => {
     assert.match(err.message, /trust\.config\.json/);
     return true;
   });
+});
+
+/** Writes a config with one node-test runner extended by `extra` into a temp dir and loads it. */
+function loadWithRunner(extra) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tk-cfg-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'trust.config.json'), JSON.stringify({
+      version: 1,
+      runners: [{ id: 'u', adapter: 'node-test', cwd: '.', testGlobs: ['t/**'], ...extra }],
+      evidence: { outDir: 'e', screensDir: 's' }, ledger: { path: 'l' },
+    }));
+    return loadConfig(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('runners[].setup: list of argv arrays is kept; absent stays absent', () => {
+  assert.deepEqual(loadWithRunner({ setup: [['npm', 'ci'], ['node', 'x.js']] }).runners[0].setup, [['npm', 'ci'], ['node', 'x.js']]);
+  assert.equal('setup' in loadWithRunner({}).runners[0], false);
+});
+
+test('runners[].setup: bad shapes are rejected naming the field path', () => {
+  const cases = [
+    [{ setup: 'npm ci' }, /runners\[0\]\.setup\b/],
+    [{ setup: ['npm', 'ci'] }, /runners\[0\]\.setup\[0\]/],
+    [{ setup: [[]] }, /runners\[0\]\.setup\[0\]/],
+    [{ setup: [['npm', 1]] }, /runners\[0\]\.setup\[0\]\[1\]/],
+    [{ setup: [['npm', '']] }, /runners\[0\]\.setup\[0\]\[1\]/],
+  ];
+  for (const [extra, re] of cases) {
+    assert.throws(() => loadWithRunner(extra), (err) => {
+      assert.ok(err instanceof TrustConfigError, String(err));
+      assert.match(err.message, re);
+      return true;
+    }, JSON.stringify(extra));
+  }
 });
