@@ -1,8 +1,15 @@
 #!/usr/bin/env node
 // trust-kit CLI: `trust-kit <subcommand> [--flags]`.
+import fs from 'node:fs';
+import path from 'node:path';
 import { loadConfig, TrustConfigError } from '../src/config.mjs';
+import { repoTopLevel } from '../src/git.mjs';
+import { runRedGreen } from '../src/redgreen/run.mjs';
 
-/** @type {Record<string, { desc: string, run: (flags: Record<string, string|boolean>) => number }>} */
+/** Thrown for bad CLI input; printed without a stack, exit 1. */
+class UsageError extends Error {}
+
+/** @type {Record<string, { desc: string, run: (flags: Record<string, string|boolean>) => number|Promise<number> }>} */
 const SUBCOMMANDS = {
   config: {
     desc: 'validate trust.config.json and print the resolved config (--root <dir>, default cwd)',
@@ -10,6 +17,26 @@ const SUBCOMMANDS = {
       const root = typeof flags.root === 'string' ? flags.root : process.cwd();
       console.log(JSON.stringify(loadConfig(root), null, 2));
       return 0;
+    },
+  },
+  'red-green': {
+    desc: 'prove changed tests fail on base by behavior and pass on head (--base <rev> --head <rev> [--out <path>]); exit 1 only on head_fail or error',
+    async run(flags) {
+      for (const f of ['base', 'head']) {
+        if (typeof flags[f] !== 'string') throw new UsageError(`red-green: missing --${f} <rev>`);
+      }
+      const repoRoot = await repoTopLevel(process.cwd());
+      const report = await runRedGreen({ repoRoot, base: /** @type {string} */ (flags.base), head: /** @type {string} */ (flags.head) });
+      const json = `${JSON.stringify(report, null, 2)}\n`;
+      if (typeof flags.out === 'string') {
+        fs.mkdirSync(path.dirname(path.resolve(flags.out)), { recursive: true });
+        fs.writeFileSync(flags.out, json);
+      } else {
+        process.stdout.write(json);
+      }
+      const n = report.runners.reduce((a, r) => a + r.tests.length, 0);
+      console.error(`red-green: ${report.verdict} (${n} test result(s), base ${report.base.slice(0, 12)}, head ${report.head.slice(0, 12)})`);
+      return report.verdict === 'head_fail' ? 1 : 0;
     },
   },
 };
@@ -40,8 +67,9 @@ if (!sub || !Object.hasOwn(SUBCOMMANDS, sub)) {
   process.exit(2);
 }
 try {
-  process.exit(SUBCOMMANDS[sub].run(parseFlags(rest)));
+  process.exitCode = await SUBCOMMANDS[sub].run(parseFlags(rest));
 } catch (e) {
-  if (e instanceof TrustConfigError) { console.error(e.message); process.exit(1); }
-  throw e;
+  if (e instanceof TrustConfigError || e instanceof UsageError) { console.error(e.message); process.exit(1); }
+  console.error(e instanceof Error ? (e.stack ?? e.message) : String(e));
+  process.exit(1);
 }
