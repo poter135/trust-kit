@@ -8,6 +8,10 @@ import { runRedGreen } from '../src/redgreen/run.mjs';
 import { verifyRules, rulesReport, RulesError } from '../src/rules.mjs';
 import { detectProtectedChanges } from '../src/protected.mjs';
 import { verifyLedger } from '../src/ledger.mjs';
+import { collectScreens } from '../src/screens.mjs';
+import { buildEvidence } from '../src/evidence.mjs';
+import { ItemError } from '../src/items.mjs';
+import { resolveCommit } from '../src/git.mjs';
 
 /** Thrown for bad CLI input; printed without a stack, exit 1 (or `exitCode`). */
 class UsageError extends Error {
@@ -86,6 +90,43 @@ const SUBCOMMANDS = {
       return res.ok ? 0 : 1;
     },
   },
+  screens: {
+    desc: '`screens collect --dir <d> --commit <sha>`: hash screenshots/recordings (.png .jpg .jpeg .webp .mp4 .mov) into <d>/manifest.json',
+    async run(flags, positional) {
+      const [action] = positional;
+      if (action !== 'collect') throw new UsageError(`screens: ${action ? `unknown action "${action}"` : 'missing action'}; use \`screens collect\``, 2);
+      for (const f of ['dir', 'commit']) {
+        if (typeof flags[f] !== 'string') throw new UsageError(`screens collect: missing --${f}`);
+      }
+      const repoRoot = await repoTopLevel(process.cwd());
+      const commit = await resolveCommit(repoRoot, /** @type {string} */ (flags.commit));
+      const dir = path.resolve(/** @type {string} */ (flags.dir));
+      const m = collectScreens({ dir, commit });
+      console.error(`screens collect: ${m.files.length} file(s) for ${commit.slice(0, 12)} → ${path.join(dir, 'manifest.json')}`);
+      return 0;
+    },
+  },
+  evidence: {
+    desc: 'build the evidence bundle (--item <id> --red-green <path> [--screens <dir>] [--out <path>], out defaults to <evidence.outDir>/<item>.json, commit = HEAD); exit 1 and list each gap when incomplete',
+    async run(flags) {
+      for (const f of ['item', 'red-green']) {
+        if (typeof flags[f] !== 'string') throw new UsageError(`evidence: missing --${f}`);
+      }
+      const repoRoot = await repoTopLevel(process.cwd());
+      const itemId = /** @type {string} */ (flags.item);
+      const opts = { repoRoot, itemId, commit: typeof flags.commit === 'string' ? flags.commit : 'HEAD',
+        redGreenPath: path.resolve(/** @type {string} */ (flags['red-green'])) };
+      if (typeof flags.screens === 'string') opts.screensDir = path.resolve(flags.screens);
+      const bundle = await buildEvidence(opts);
+      const out = typeof flags.out === 'string' ? path.resolve(flags.out) : path.join(repoRoot, loadConfig(repoRoot).evidence.outDir, `${itemId}.json`);
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.writeFileSync(out, `${JSON.stringify(bundle, null, 2)}\n`);
+      if (bundle.complete) { console.error(`evidence: complete (${bundle.commit.slice(0, 12)}) → ${out}`); return 0; }
+      for (const m of bundle.missing) console.error(`✗ ${m}`);
+      console.error(`evidence: incomplete, ${bundle.missing.length} gap(s) → ${out}`);
+      return 1;
+    },
+  },
 };
 
 /** @param {string[]} args @returns {{ flags: Record<string, string|boolean>, positional: string[] }} */
@@ -119,7 +160,7 @@ try {
   process.exitCode = await SUBCOMMANDS[sub].run(flags, positional);
 } catch (e) {
   if (e instanceof UsageError) { console.error(e.message); process.exit(e.exitCode); }
-  if (e instanceof TrustConfigError || e instanceof RulesError) { console.error(e.message); process.exit(1); }
+  if (e instanceof TrustConfigError || e instanceof RulesError || e instanceof ItemError) { console.error(e.message); process.exit(1); }
   console.error(e instanceof Error ? (e.stack ?? e.message) : String(e));
   process.exit(1);
 }
