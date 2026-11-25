@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadRules, verifyRules, rulesReport, newlyEnforcedIds, RulesError } from '../src/rules.mjs';
+import { loadRules, verifyRules, rulesReport, newlyEnforcedIds, ruleEvidenceProblems, RulesError } from '../src/rules.mjs';
 import { runRedGreen } from '../src/redgreen/run.mjs';
 import { makeRepo, commit, nodeTestConfig } from './redgreen/helpers.mjs';
 
@@ -255,5 +255,22 @@ test('red-green: no rules file on either side → newlyEnforced is []', async ()
     assert.equal(rep.verdict, 'valid_red');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ruleEvidenceProblems: the red→green row must be the rule\'s own check.testName, not another test in the same file', () => {
+  const head = { version: 1, rules: [RULE] };
+  const file = RULE.check.file;
+  const other = [{ id: 'unit', tests: [
+    { file, name: 'some other test', base: 'behavior_fail', head: 'pass' },
+    { file, name: 'refuses delete', base: 'pass', head: 'pass' },
+  ] }];
+  const problems = ruleEvidenceProblems({ ids: ['no-delete'], head, runners: other });
+  assert.equal(problems.length, 1, 'another test going red→green must not prove the rule');
+  assert.match(problems[0].problem, /refuses delete/);
+
+  for (const name of ['refuses delete', 'suite > refuses delete', 'describe block refuses delete']) {
+    const own = [{ id: 'unit', tests: [{ file, name, base: 'behavior_fail', head: 'pass' }] }];
+    assert.deepEqual(ruleEvidenceProblems({ ids: ['no-delete'], head, runners: own }), [], name);
   }
 });

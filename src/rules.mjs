@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { git, showFile } from './git.mjs';
+import { isRedToGreen, matchesTestName } from './redgreen/judge.mjs';
 
 export const RULES_FILE = '.trust/rules.json';
 export const LAYERS = /** @type {const} */ (['structure', 'machine', 'runtime', 'prose', 'human']);
@@ -168,12 +169,12 @@ export function ruleEvidenceProblems({ ids, head, runners }) {
   for (const id of ids) {
     const rule = head.rules.find((r) => r.id === id);
     if (!rule?.check) { out.push({ ruleId: id, problem: `rule "${id}" became enforced without a check` }); continue; }
-    const { runnerId, file } = rule.check;
+    const { runnerId, file, testName } = rule.check;
     const rows = (runners.find((r) => r.id === runnerId)?.tests ?? []).filter((t) => t.file === file);
     if (rows.length === 0) {
       out.push({ ruleId: id, problem: `rule "${id}" became enforced but its check ${file} (runner ${runnerId}) is not among the changed tests` });
-    } else if (!rows.some((t) => t.base === 'behavior_fail' && t.head === 'pass')) {
-      out.push({ ruleId: id, problem: `rule "${id}" became enforced but no test in its check ${file} failed on base by behavior and passed on head` });
+    } else if (!rows.some((t) => matchesTestName(t.name, testName) && isRedToGreen(t))) {
+      out.push({ ruleId: id, problem: `rule "${id}" became enforced but its check test ${JSON.stringify(testName)} in ${file} did not fail on base by behavior and pass on head` });
     }
   }
   return out;

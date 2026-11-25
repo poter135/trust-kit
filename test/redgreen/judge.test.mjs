@@ -61,3 +61,9 @@ test('combineVerdicts: head_fail > valid_red > invalid_red > no_red; no_tests on
   assert.equal(combineVerdicts(['invalid_red', 'valid_red']), 'valid_red');
   assert.equal(combineVerdicts(['valid_red', 'head_fail']), 'head_fail');
 });
+
+test('valid_red needs one test that fails on base by behavior AND passes on head: a base-only failure is not enough', () => {
+  const j = judgeRedGreen({ changed,
+    baseResults: [r('old name', 'behavior_fail'), r('y', 'pass')], headResults: [r('new name', 'pass'), r('y', 'pass')] });
+  assert.equal(j.verdict, 'invalid_red');
+});

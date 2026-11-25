@@ -10,8 +10,21 @@
  */
 
 /**
+ * True when a judged row's name is `testName`: the exact name, or `testName` as the last part of a nested name
+ * (node:test `parent > child`, Jest fullName `describe title test title`).
+ * @param {string} rowName @param {string} testName
+ */
+export function matchesTestName(rowName, testName) {
+  return rowName === testName || rowName.endsWith(` > ${testName}`) || rowName.endsWith(` ${testName}`);
+}
+
+/** A row that proves a red: it failed on base by behavior and passes on head. @param {JudgedTest} t */
+export const isRedToGreen = (t) => t.base === 'behavior_fail' && t.head === 'pass';
+
+/**
  * Rules, in order: no changed tests → no_tests; any changed-test result on head other than pass/skip →
- * head_fail; any behavior_fail on base → valid_red; otherwise any load_fail on base → invalid_red;
+ * head_fail; some test failing on base by behavior and passing on head → valid_red; otherwise any load_fail or
+ * behavior_fail on base (e.g. a failing test that was renamed or removed on head) → invalid_red;
  * otherwise no_red. Only results for changed test files are considered.
  * @param {{ changed: { runnerId: string, file: string }[], baseResults: Result[], headResults: Result[] }} input
  * @returns {RedGreenJudgement}
@@ -36,8 +49,8 @@ export function judgeRedGreen({ changed, baseResults, headResults }) {
   /** @type {Verdict} */
   let verdict;
   if (head.length === 0 || head.some((r) => r.status !== 'pass' && r.status !== 'skip')) verdict = 'head_fail';
-  else if (base.some((r) => r.status === 'behavior_fail')) verdict = 'valid_red';
-  else if (base.some((r) => r.status === 'load_fail')) verdict = 'invalid_red';
+  else if (tests.some(isRedToGreen)) verdict = 'valid_red';
+  else if (base.some((r) => r.status === 'load_fail' || r.status === 'behavior_fail')) verdict = 'invalid_red';
   else verdict = 'no_red';
   return { verdict, tests };
 }
