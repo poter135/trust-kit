@@ -147,3 +147,35 @@ test('CLI packet: when origin/<default> exists it is the default branch, not the
   assert.equal(JSON.parse(fs.readFileSync(`${out}.json`, 'utf8')).base, base);
   assert.match(fs.readFileSync(out, 'utf8'), /origin\/main/);
 });
+
+const T1 = { runnerId: 'unit', file: 'test/b1.test.mjs', testName: 'b1 works' };
+const ev2 = (item, extra = {}) => ({
+  schema: 'trust-kit/evidence@2', item, commit: HEAD,
+  redGreen: { verdict: 'valid_red', ciRunUrl: 'https://github.com/acme/app/actions/runs/9', runId: '9', repo: 'acme/app', head: HEAD },
+  tests: item.tests.map((t) => ({ ...t, base: 'behavior_fail', head: 'pass', ok: true })),
+  checks: [], complete: true, missing: [], ...extra,
+});
+
+test('I6: an item that names no tests is flagged even with a complete bundle', () => {
+  const dir = repo();
+  const b1 = { ...mkItem('B1'), tests: [] };
+  const p = buildPacket({ repoRoot: dir, base: BASE, head: HEAD, items: [{ item: b1, evidence: ev2(b1) }], protectedChanges: [] });
+  assert.ok(p.entries[0].flagged.some((f) => f.includes('沒有列出證明它的測試')), p.entries[0].flagged.join('|'));
+});
+
+test('I6: a bundle from trust-kit before 0.4 (evidence@1, not fetched from a CI run) is flagged', () => {
+  const dir = repo();
+  const b1 = { ...mkItem('B1'), tests: [T1] };
+  const old = { ...ev2(b1), schema: 'trust-kit/evidence@1' };
+  const p = buildPacket({ repoRoot: dir, base: BASE, head: HEAD, items: [{ item: b1, evidence: old }], protectedChanges: [] });
+  assert.ok(p.entries[0].flagged.some((f) => f.includes('evidence@1')), p.entries[0].flagged.join('|'));
+});
+
+test('I6: the packet shows each item\'s acceptance and its own tests with their red→green result', () => {
+  const dir = repo();
+  const b1 = { ...mkItem('B1'), acceptance: ['登入失敗要顯示原因'], tests: [T1] };
+  const p = buildPacket({ repoRoot: dir, base: BASE, head: HEAD, items: [{ item: b1, evidence: ev2(b1) }], protectedChanges: [] });
+  assert.deepEqual(p.entries[0].flagged, []);
+  assert.ok(p.markdown.includes('登入失敗要顯示原因'), p.markdown);
+  assert.ok(p.markdown.includes('test/b1.test.mjs') && p.markdown.includes('b1 works') && p.markdown.includes('behavior_fail → pass'), p.markdown);
+});

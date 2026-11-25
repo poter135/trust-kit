@@ -43,24 +43,32 @@ test('displayPath: inside → repo-relative posix; outside → <outside-repo>/<b
   if (dir.startsWith('/private/')) assert.equal(displayPath(dir, path.join(dir.slice('/private'.length), 'x.json')), 'x.json');
 });
 
-test('evidence: missing red-green + missing screens, inside repo → no absolute path in bundle', async () => {
+/** GitHub fake whose failures carry absolute local paths, like real gh errors can. */
+const leakyGithub = (dir) => ({
+  async getRun() { return { html_url: 'https://github.com/acme/app/actions/runs/1', head_sha: 'x', status: 'completed', event: 'pull_request', repository: { full_name: 'acme/app' } }; },
+  async downloadRedGreen(_slug, _id, dest) { throw new Error(`cannot write ${dest}/red-green.json (repo ${dir})`); },
+});
+
+test('evidence: failed CI download + missing screens, inside repo → no absolute path in bundle', async () => {
   const { dir, sha } = setup();
-  const b = await buildEvidence({ repoRoot: dir, itemId: 'web1', commit: sha, redGreenPath: path.join(dir, 'out/none.json'), screensDir: path.join(dir, 'shots') });
+  commit(dir, {});
+  spawnSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/app.git'], { cwd: dir });
+  const b = await buildEvidence({ repoRoot: dir, itemId: 'web1', commit: sha, runId: '1', github: leakyGithub(dir), screensDir: path.join(dir, 'shots') });
   assert.equal(b.complete, false);
   const s = JSON.stringify(b);
   assertNoAbsPath(s, dir, 'bundle');
-  assert.ok(s.includes('out/none.json') && s.includes('shots'), s);
+  assert.ok(s.includes('trust-red-green') && s.includes('shots'), s);
 });
 
-test('evidence: red-green and screens outside repo → shown as <outside-repo>/<name>', async () => {
+test('evidence: screens outside repo → shown as <outside-repo>/<name>', async () => {
   const { dir, sha } = setup();
+  spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/acme/app.git'], { cwd: dir });
   const out = outsideDir();
   writeFiles(out, { 'shots/a.png': 'x' });
-  const b = await buildEvidence({ repoRoot: dir, itemId: 'web1', commit: sha, redGreenPath: path.join(out, 'rg.json'), screensDir: path.join(out, 'shots') });
-  fs.writeFileSync(path.join(out, 'shots/a.png'), 'changed-without-manifest');
+  const b = await buildEvidence({ repoRoot: dir, itemId: 'web1', commit: sha, runId: '1', github: leakyGithub(dir), screensDir: path.join(out, 'shots') });
   const s = JSON.stringify(b);
   assertNoAbsPath(s, dir, 'bundle');
-  assert.ok(s.includes('<outside-repo>/rg.json') && s.includes('<outside-repo>/shots'), s);
+  assert.ok(s.includes('<outside-repo>/shots'), s);
 });
 
 test('approval: unknown packet error message has no absolute path', () => {
@@ -74,7 +82,6 @@ test('approval: unknown packet error message has no absolute path', () => {
 test('CLI: evidence + screens collect + packet with inside and outside paths → no absolute path in files or stderr', () => {
   const { dir, sha } = setup();
   const out = outsideDir();
-  writeFiles(out, { 'rg.json': JSON.stringify({ schema: 'trust-kit/red-green@1', head: sha, verdict: 'no_red', runners: [], newlyEnforced: [] }) });
   writeFiles(dir, { 'shots/a.png': 'x' });
   const run = (args) => spawnSync(process.execPath, [bin, ...args], { cwd: dir, encoding: 'utf8' });
 
@@ -82,12 +89,12 @@ test('CLI: evidence + screens collect + packet with inside and outside paths →
   assert.equal(sc.status, 0, sc.stderr);
   assertNoAbsPath(sc.stderr, dir, 'screens collect stderr');
 
-  const ev = run(['evidence', '--item', 'web1', '--red-green', path.join(out, 'rg.json'), '--screens', path.join(out, 'noshots')]);
+  const ev = run(['evidence', '--item', 'web1', '--run', '1', '--screens', path.join(out, 'noshots')]);
   assert.equal(ev.status, 1, ev.stderr);
   assertNoAbsPath(ev.stderr, dir, 'evidence stderr');
   assertNoAbsPath(fs.readFileSync(path.join(dir, '.trust/evidence/web1.json'), 'utf8'), dir, 'evidence json');
 
-  const ev2 = run(['evidence', '--item', 'web1', '--red-green', path.join(out, 'rg.json'), '--screens', 'shots', '--out', path.join(out, 'ev.json')]);
+  const ev2 = run(['evidence', '--item', 'web1', '--run', '1', '--screens', 'shots', '--out', path.join(out, 'ev.json')]);
   assertNoAbsPath(ev2.stderr, dir, 'evidence stderr (outside --out)');
   assertNoAbsPath(fs.readFileSync(path.join(out, 'ev.json'), 'utf8'), dir, 'evidence json (outside --out)');
 

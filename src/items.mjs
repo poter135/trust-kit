@@ -9,7 +9,12 @@ const ID_RE = /^[A-Za-z0-9_-]+$/;
 
 /**
  * @typedef {{ kind: 'deploy-function'|'hosting'|'app-release'|'batch-write', target: string }} Approval
- * @typedef {{ id: string, title: string, surfaces: ('app'|'web'|'functions')[], acceptance: string[], approvals: Approval[] }} Item
+ * @typedef {{ runnerId: string, file: string, testName: string }} ItemTest
+ *   A test that proves this item: it must fail on base by behavior and pass on head in the CI red-green report.
+ *   `testName` is the test's name, or the last part of a nested name (`parent > child`, Jest `describe test`).
+ * @typedef {{ id: string, title: string, surfaces: ('app'|'web'|'functions')[], acceptance: string[], approvals: Approval[],
+ *   tests: ItemTest[] }} Item
+ *   `tests` is optional in the file (defaults to []), but evidence is never complete for an item without tests.
  */
 
 /** @param {string} id */
@@ -49,8 +54,13 @@ export function loadItem(repoRoot, id) {
   if (!Array.isArray(raw.approvals) || !raw.approvals.every((a) => a && APPROVAL_KINDS.includes(a.kind) && isStr(a.target))) {
     fail('approvals', `must be an array of { kind: ${APPROVAL_KINDS.join('|')}, target: string }`);
   }
+  if (raw.tests !== undefined && (!Array.isArray(raw.tests)
+    || !raw.tests.every((t) => t && isStr(t.runnerId) && isStr(t.file) && isStr(t.testName)))) {
+    fail('tests', 'must be an array of { runnerId: string, file: string (repo-relative), testName: string }');
+  }
   return {
     id, title: raw.title, surfaces: [...new Set(raw.surfaces)], acceptance: [...raw.acceptance],
     approvals: raw.approvals.map((a) => ({ kind: a.kind, target: a.target })),
+    tests: (raw.tests ?? []).map((t) => ({ runnerId: t.runnerId, file: t.file, testName: t.testName })),
   };
 }

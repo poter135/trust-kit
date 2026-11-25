@@ -33,18 +33,16 @@ const SUBCOMMANDS = {
     },
   },
   'red-green': {
-    desc: 'prove changed tests fail on base by behavior and pass on head (--base <rev> --head <rev> [--out <path>] [--ci-run-url <https url>, overrides the GITHUB_* derived URL]); exit 1 only on head_fail or error',
+    desc: 'prove changed tests fail on base by behavior and pass on head (--base <rev> --head <rev> [--out <path>]); in GitHub Actions the report records the run URL from GITHUB_*; exit 1 only on head_fail or error',
     async run(flags) {
       for (const f of ['base', 'head']) {
         if (typeof flags[f] !== 'string') throw new UsageError(`red-green: missing --${f} <rev>`);
       }
-      const ciUrl = flags['ci-run-url'];
-      if (ciUrl !== undefined && (typeof ciUrl !== 'string' || !/^https?:\/\/\S+$/.test(ciUrl))) {
-        throw new UsageError('red-green: --ci-run-url must be an http(s) URL');
+      if (flags['ci-run-url'] !== undefined) {
+        throw new UsageError('red-green: --ci-run-url was removed in trust-kit 0.4.0: a report must never be stamped as CI by hand. In GitHub Actions the run URL comes from GITHUB_*; evidence only accepts reports it downloads from that run itself (evidence --run).');
       }
       const repoRoot = await repoTopLevel(process.cwd());
       const report = await runRedGreen({ repoRoot, base: /** @type {string} */ (flags.base), head: /** @type {string} */ (flags.head) });
-      if (typeof ciUrl === 'string') report.ciRunUrl = ciUrl;
       const json = `${JSON.stringify(report, null, 2)}\n`;
       if (typeof flags.out === 'string') {
         fs.mkdirSync(path.dirname(path.resolve(flags.out)), { recursive: true });
@@ -115,15 +113,18 @@ const SUBCOMMANDS = {
     },
   },
   evidence: {
-    desc: 'build the evidence bundle (--item <id> --red-green <path> [--screens <dir>] [--out <path>], out defaults to <evidence.outDir>/<item>.json, commit = HEAD); exit 1 and list each gap when incomplete',
+    desc: 'build the evidence bundle from a GitHub Actions run (--item <id> --run <run id|run URL> [--screens <dir>] [--out <path>], out defaults to <evidence.outDir>/<item>.json, commit = HEAD); fetches the run and its trust-red-green artifact with `gh` and checks repo (origin), commit and the item\'s own tests; exit 1 and list each gap when incomplete',
     async run(flags) {
-      for (const f of ['item', 'red-green']) {
+      if (flags['red-green'] !== undefined) {
+        throw new UsageError('evidence: --red-green was removed in trust-kit 0.4.0: a local report file is never accepted. Use --run <GitHub Actions run id or URL>; evidence downloads the trust-red-green artifact from that run itself.');
+      }
+      for (const f of ['item', 'run']) {
         if (typeof flags[f] !== 'string') throw new UsageError(`evidence: missing --${f}`);
       }
       const repoRoot = await repoTopLevel(process.cwd());
       const itemId = /** @type {string} */ (flags.item);
       const opts = { repoRoot, itemId, commit: typeof flags.commit === 'string' ? flags.commit : 'HEAD',
-        redGreenPath: path.resolve(/** @type {string} */ (flags['red-green'])) };
+        runId: /** @type {string} */ (flags.run) };
       if (typeof flags.screens === 'string') opts.screensDir = path.resolve(flags.screens);
       const bundle = await buildEvidence(opts);
       const out = typeof flags.out === 'string' ? path.resolve(flags.out) : path.join(repoRoot, loadConfig(repoRoot).evidence.outDir, `${itemId}.json`);

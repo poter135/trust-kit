@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { loadConfig } from './config.mjs';
 import { scrubRepoRoot } from './paths.mjs';
+import { EVIDENCE_SCHEMA } from './evidence.mjs';
 
 export const PACKETS_DIR = '.trust/packets';
 /** Stage 1 binds approvals to the git head only; batch-write plan hashes arrive in stage 2. */
@@ -26,8 +27,14 @@ const short = (s) => String(s ?? '').slice(0, 12);
  * @returns {string[]}
  */
 function itemFlags(item, ev, head, repoRoot) {
-  if (!ev) return [`沒有證據包，請先執行 trust-kit evidence --item ${item.id}`];
   const out = [];
+  if (!Array.isArray(item.tests) || item.tests.length === 0) {
+    out.push(`項目沒有列出證明它的測試（tests）：無法確認這個項目自己有紅燈。請在 .trust/items/${item.id}.json 加上 tests 後重跑 evidence`);
+  }
+  if (!ev) return [...out, `沒有證據包，請先執行 trust-kit evidence --item ${item.id} --run <CI run>`];
+  if (ev.schema !== EVIDENCE_SCHEMA) {
+    out.push(`證據包格式是 ${JSON.stringify(ev.schema)}，不是 ${EVIDENCE_SCHEMA}：舊版沒有從 CI run 下載紅綠燈、也沒有逐項檢查測試。請用目前的 trust-kit 重跑 evidence --run`);
+  }
   if (ev.commit !== head) out.push(`證據包是舊 commit 的：證據包 commit=${short(ev.commit)}，審查包 head=${short(head)}。請在目前 commit 重新執行 trust-kit evidence --item ${item.id}`);
   if (ev.redGreen?.verdict !== 'valid_red') out.push(`紅綠燈判定不是 valid_red：${ev.redGreen?.verdict ?? '（沒有判定）'}`);
   if (ev.complete !== true) {
@@ -71,6 +78,15 @@ export function buildPacket({ repoRoot, base, baseRef = null, head, items, prote
     for (const e of mine) if (e.kind === 'batch-write') attention.push(`- 第 ${e.n} 項（${item.id}）：${BATCH_WRITE_UNSUPPORTED}`);
 
     const lines = [`## ${nums}. ${item.title}（${item.id}）`, '', `- 改了什麼：${item.title}`];
+    lines.push('- 完成條件：');
+    for (const a of item.acceptance.length > 0 ? item.acceptance : ['（未列出）']) lines.push(`  - ${a}`);
+    lines.push('- 證明這個項目的測試：');
+    const results = Array.isArray(evidence?.tests) ? evidence.tests : [];
+    if (!Array.isArray(item.tests) || item.tests.length === 0) lines.push('  - （未列出）');
+    for (const t of item.tests ?? []) {
+      const r = results.find((x) => x.runnerId === t.runnerId && x.file === t.file && x.testName === t.testName);
+      lines.push(`  - \`${t.file}\` › ${t.testName}：${r ? `${r.base} → ${r.head}${r.ok ? '' : '（不算紅燈）'}` : '（證據包沒有結果）'}`);
+    }
     const ci = evidence?.redGreen?.ciRunUrl;
     lines.push(`- 紅綠燈：${evidence?.redGreen?.verdict ?? '（沒有證據包）'}${ci ? `（[CI](${ci})）` : '（沒有 CI 連結）'}`);
     const files = evidence?.screens?.files ?? [];

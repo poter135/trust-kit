@@ -2,7 +2,7 @@
 # Caller:
 #   jobs:
 #     red-green:
-#       uses: poter135/trust-kit/.github/workflows/red-green.yml@v0.3.1
+#       uses: poter135/trust-kit/.github/workflows/red-green.yml@v0.4.0
 #       with:
 #         setup-command: npm ci --prefix functions
 # The trust-kit version that judges the PR is read from tools/trust-kit.version at the PR's BASE commit
@@ -112,10 +112,9 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: >-
           node .trust-kit/bin/trust-kit.mjs red-green
-          --base "$BASE_SHA" --head "$HEAD_SHA" --out red-green.json --ci-run-url "$CI_RUN_URL"
+          --base "$BASE_SHA" --head "$HEAD_SHA" --out red-green.json
 
       - name: protected
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}

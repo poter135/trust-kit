@@ -51,10 +51,9 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: >-
           node .trust-kit-base/bin/trust-kit.mjs red-green
-          --base "$BASE_SHA" --head "$HEAD_SHA" --out red-green.json --ci-run-url "$CI_RUN_URL"
+          --base "$BASE_SHA" --head "$HEAD_SHA" --out red-green.json
 
       - name: protected (base judge)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
