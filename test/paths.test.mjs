@@ -9,7 +9,7 @@ import path from 'node:path';
 import { makeRepo, commit, writeFiles, nodeTestConfig } from './redgreen/helpers.mjs';
 import { buildEvidence } from '../src/evidence.mjs';
 import { recordApproval } from '../src/approval.mjs';
-import { displayPath } from '../src/paths.mjs';
+import { displayPath, scrubRepoRoot } from '../src/paths.mjs';
 
 const bin = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'trust-kit.mjs');
 const TMP = os.tmpdir();
@@ -111,4 +111,13 @@ test('packet: legacy evidence bundle with repo-root paths in missing is scrubbed
   const md = fs.readFileSync(path.join(dir, 'p.md'), 'utf8');
   assertNoAbsPath(md + fs.readFileSync(path.join(dir, 'p.md.json'), 'utf8'), dir, 'packet');
   assert.ok(md.includes('out/rg.json'), md);
+});
+
+test('scrubRepoRoot respects path boundaries and never scrubs a filesystem root', () => {
+  assert.equal(scrubRepoRoot('/tmp/proj', 'see /tmp/proj/a/b.json now'), 'see a/b.json now');
+  assert.equal(scrubRepoRoot('/tmp/proj', '"/tmp/proj"'), '"."');
+  assert.equal(scrubRepoRoot('/tmp/proj', '/tmp/proj-2/x.json'), '/tmp/proj-2/x.json');
+  assert.equal(scrubRepoRoot('/tmp/proj', '/tmp/projX'), '/tmp/projX');
+  assert.equal(scrubRepoRoot('/tmp/proj', '/other/tmp/proj/x'), '/other/tmp/proj/x');
+  assert.equal(scrubRepoRoot('/', '/etc/hosts'), '/etc/hosts');
 });

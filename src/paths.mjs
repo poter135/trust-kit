@@ -38,14 +38,26 @@ export function displayPath(repoRoot, p) {
   return direct ?? `${OUTSIDE_REPO}/${path.basename(abs)}`;
 }
 
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * Rewrites any absolute path under repoRoot (either spelling) found inside free text to its repo-relative form.
  * For text produced elsewhere (e.g. evidence bundles written by older versions) before it is re-emitted.
+ * Only whole path tokens match: the root must not be preceded by a path character and must be followed by a
+ * separator or an end of token (whitespace, quote, `)`, CJK punctuation, end of text), so `/tmp/proj-2` or
+ * `/tmp/projX` stay untouched for root `/tmp/proj`. A filesystem root (e.g. "/") is never scrubbed.
  * @param {string} repoRoot @param {string} text
  */
 export function scrubRepoRoot(repoRoot, text) {
   let out = String(text);
-  const roots = [...new Set([path.resolve(repoRoot), realish(path.resolve(repoRoot))])].sort((a, b) => b.length - a.length);
-  for (const r of roots) out = out.split(`${r}${path.sep}`).join('').split(r).join('.');
+  const resolved = path.resolve(repoRoot);
+  if (path.parse(resolved).root === resolved) return out;
+  const roots = [...new Set([resolved, realish(resolved)])]
+    .filter((r) => path.parse(r).root !== r).sort((a, b) => b.length - a.length);
+  const sep = escapeRe(path.sep);
+  for (const r of roots) {
+    const re = new RegExp(`(?<![\\w./\\\\-])${escapeRe(r)}(?:${sep}|(?=[\\s'"\`)）（，。：；、]|$))`, 'g');
+    out = out.replace(re, (m) => (m.endsWith(path.sep) ? '' : '.'));
+  }
   return out;
 }
