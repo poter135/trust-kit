@@ -5,12 +5,14 @@ import { createHash } from 'node:crypto';
 import { loadConfig } from './config.mjs';
 
 export const PACKETS_DIR = '.trust/packets';
+/** Stage 1 binds approvals to the git head only; batch-write plan hashes arrive in stage 2. */
+export const BATCH_WRITE_UNSUPPORTED = '批次寫入計畫 hash 尚未支援（第二階段），不可核准';
 const short = (s) => String(s ?? '').slice(0, 12);
 
 /**
  * @typedef {{ n: number, item: string, kind: import('./items.mjs').Approval['kind']|null, target: string|null,
  *   commit: string, flagged: string[] }} PacketEntry
- *   `commit` is the packet head.
+ *   `commit` is the packet head (git SHA). batch-write entries are flagged and not approvable in stage 1.
  * @typedef {{ id: string, markdown: string, entries: PacketEntry[] }} Packet
  * @typedef {{ id: string, entries: PacketEntry[], generatedAt: string, head: string }} PacketRecord
  */
@@ -53,12 +55,13 @@ export function buildPacket({ repoRoot, head, items, protectedChanges }) {
     const mine = [];
     for (const a of item.approvals.length > 0 ? item.approvals : [null]) {
       const e = { n: entries.length + 1, item: item.id, kind: a ? a.kind : null, target: a ? a.target : null,
-        commit: head, flagged: [...flags, ...protectedFlag] };
+        commit: head, flagged: [...flags, ...protectedFlag, ...(a?.kind === 'batch-write' ? [BATCH_WRITE_UNSUPPORTED] : [])] };
       entries.push(e);
       mine.push(e);
     }
     const nums = mine.map((e) => e.n).join('、');
     for (const f of flags) attention.push(`- 第 ${nums} 項（${item.id}）：${f}`);
+    for (const e of mine) if (e.kind === 'batch-write') attention.push(`- 第 ${e.n} 項（${item.id}）：${BATCH_WRITE_UNSUPPORTED}`);
 
     const lines = [`## ${nums}. ${item.title}（${item.id}）`, '', `- 改了什麼：${item.title}`];
     const ci = evidence?.redGreen?.ciRunUrl;
@@ -72,8 +75,9 @@ export function buildPacket({ repoRoot, head, items, protectedChanges }) {
     }
     lines.push('- 需要的核准：');
     for (const e of mine) {
-      lines.push(e.kind ? `  - 第 ${e.n} 項：\`${e.kind}\`／\`${e.target}\`／commit \`${short(e.commit)}\``
-        : `  - 第 ${e.n} 項：此項目沒有列出需要的核准（無法核准）`);
+      if (!e.kind) lines.push(`  - 第 ${e.n} 項：此項目沒有列出需要的核准（無法核准）`);
+      else if (e.kind === 'batch-write') lines.push(`  - 第 ${e.n} 項：\`${e.kind}\`／\`${e.target}\`（${BATCH_WRITE_UNSUPPORTED}）`);
+      else lines.push(`  - 第 ${e.n} 項：\`${e.kind}\`／\`${e.target}\`／commit \`${short(e.commit)}\``);
     }
     blocks.push(lines.join('\n'));
   }

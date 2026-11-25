@@ -2,7 +2,7 @@
 // Stage 1: records are written by Claude from the user's chat reply. They catch commit drift, not forgery.
 import fs from 'node:fs';
 import path from 'node:path';
-import { PACKETS_DIR } from './packet.mjs';
+import { PACKETS_DIR, BATCH_WRITE_UNSUPPORTED } from './packet.mjs';
 
 export const APPROVALS_DIR = '.trust/approvals';
 const PACKET_ID = /^[0-9a-f]{12}$/;
@@ -38,6 +38,7 @@ export function recordApproval({ repoRoot, packetId, numbers, allowFlagged = fal
     const e = packet.entries.find((x) => x.n === n);
     if (!e) throw new ApprovalError(`審查包 ${packetId} 沒有第 ${n} 項`);
     if (!e.kind) throw new ApprovalError(`第 ${n} 項（${e.item}）沒有列出需要的核准，無法核准`);
+    if (e.kind === 'batch-write') throw new ApprovalError(`第 ${n} 項（${e.item}）：${BATCH_WRITE_UNSUPPORTED}（--allow-flagged 也不行）`);
     if (e.flagged.length > 0 && !allowFlagged) {
       throw new ApprovalError(`第 ${n} 項（${e.item}）有需要注意的問題，未加 --allow-flagged 不能核准：\n  ${e.flagged.join('\n  ')}`);
     }
@@ -57,12 +58,15 @@ export function recordApproval({ repoRoot, packetId, numbers, allowFlagged = fal
 }
 
 /**
- * ok only if some approval record has an entry with the same kind, target and exact commit string
- * (a full SHA; for batch-write, the plan hash).
+ * ok only if some approval record has an entry with the same kind, target and exact full commit SHA.
+ * Stage 1: kind 'batch-write' is always refused (plan-hash approvals need stage 2).
  * @param {{ repoRoot: string, kind: string, target: string, commit: string }} opts
  * @returns {{ ok: boolean, reason?: string }}
  */
 export function checkApproval({ repoRoot, kind, target, commit }) {
+  if (kind === 'batch-write') {
+    return { ok: false, reason: `batch-write／${target} 未核准：批次寫入需要以寫入計畫 hash 核准，須等第二階段支援；第一階段一律拒絕。` };
+  }
   const dir = path.join(repoRoot, APPROVALS_DIR);
   const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort() : [];
   const sameTarget = [];

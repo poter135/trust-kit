@@ -79,3 +79,12 @@ test('CLI packet writes markdown, <out>.json and .trust/packets/<id>.json', () =
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, '.trust/packets', `${side.id}.json`), 'utf8')), side);
   assert.ok(r.stdout.includes(side.id));
 });
+
+test('stage 1: batch-write entries are flagged as not approvable; others are not', () => {
+  const dir = repo();
+  const b1 = mkItem('B1', [{ kind: 'deploy-function', target: 'fnA' }, { kind: 'batch-write', target: 'catalog' }]);
+  const p = buildPacket({ repoRoot: dir, head: HEAD, items: [{ item: b1, evidence: mkEvidence(b1) }], protectedChanges: [] });
+  assert.deepEqual(p.entries[0].flagged, []);
+  assert.ok(p.entries[1].flagged.includes('批次寫入計畫 hash 尚未支援（第二階段），不可核准'), p.entries[1].flagged.join('|'));
+  assert.ok(p.markdown.split('## 需要注意')[1].split('\n## ')[0].includes('批次寫入計畫 hash 尚未支援'));
+});

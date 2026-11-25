@@ -173,7 +173,7 @@ const SUBCOMMANDS = {
     },
   },
   'check-approval': {
-    desc: 'exit 0 only if an approval record covers --kind <k> --target <t> --commit <sha> exactly (batch-write: --commit is the plan hash, compared as given); exit 1 with the reason otherwise',
+    desc: 'exit 0 only if an approval record covers --kind <k> --target <t> --commit <sha> exactly; exit 1 with the reason otherwise',
     async run(flags) {
       for (const f of ['kind', 'target', 'commit']) {
         if (typeof flags[f] !== 'string') throw new UsageError(`check-approval: missing --${f}`);

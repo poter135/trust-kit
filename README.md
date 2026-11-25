@@ -32,7 +32,9 @@ trust-kit check-approval --kind <deploy-function|hosting|app-release|batch-write
 
 - `packet`：讀 `.trust/items/<id>.json` 與 `<evidence.outDir>/<id>.json`，並以 merge-base 偵測驗證系統改動。產出繁中 markdown：最上方「需要注意」（證據不完整、紅綠燈非 `valid_red`、沒有證據包、證據包不是 head 的 commit、驗證系統改動），接著逐項列出編號、標題、紅綠燈與 CI 連結、截圖、需要的核准（kind／target／commit 前 12 碼）。每個（項目, 核准）一個編號；沒有列核准的項目仍有編號但無法核准。審查包 id＝markdown 的 sha256 前 12 碼；另寫 `<out>.json` 與 `.trust/packets/<id>.json`（`{ id, entries, generatedAt, head }`）。核准一律綁定審查包的 head（預設 `HEAD`）。
 - `approve`：把核准寫進 `.trust/approvals/<id>.json`（`approvedBy: "user-chat"`、`approvedAt`；同一審查包再次核准會合併）。審查包不存在、編號不存在、項目沒有核准種類時丟錯且不寫檔；有「需要注意」的編號要加 `--allow-flagged` 才能核准（驗證系統有改動時，所有編號都算需要注意）。
-- `check-approval`：掃 `.trust/approvals/*.json`，只有 kind、target、commit 完全相同才 exit 0；不符 exit 1，原因列出核准的 commit 與目前的 commit，或「未核准」。`batch-write` 的 `--commit` 是寫入計畫的雜湊，原字串比對；其他種類若不是 40 碼 SHA 會先解析成完整 commit。
+- `check-approval`：掃 `.trust/approvals/*.json`，只有 kind、target、commit 完全相同才 exit 0；不符 exit 1，原因列出核准的 commit 與目前的 commit，或「未核准」。`--commit` 若不是 40 碼 SHA 會先解析成完整 commit。
+- **`batch-write` 第一階段不可核准**：核准只綁 git head，批次寫入需要以寫入計畫 hash 核准，要等第二階段。審查包對每個 `batch-write` 編號加上「批次寫入計畫 hash 尚未支援（第二階段），不可核准」；`approve` 即使加 `--allow-flagged` 也拒絕；`check-approval --kind batch-write` 一律 exit 1。
+- 第一階段核准紀錄未綁定 session（哪個對話核准的不記錄、不比對），留待後續階段。
 - 第一階段核准紀錄由 Claude 依使用者在對話中的回覆寫入，只防 commit 漂移、不防偽造；偽造由第三階段身份分離處理。
 
 ## trust.config.json（放在被檢查 repo 的根目錄）

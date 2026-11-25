@@ -63,8 +63,29 @@ test('flagged entry needs allowFlagged; null-kind and unknown numbers are refuse
   assert.throws(() => recordApproval({ repoRoot: dir, packetId: p.id, numbers: [3] }), /flagged|需要注意|--allow-flagged/);
   assert.throws(() => recordApproval({ repoRoot: dir, packetId: p.id, numbers: [9] }));
   assert.equal(fs.existsSync(path.join(dir, '.trust/approvals')), false);
-  recordApproval({ repoRoot: dir, packetId: p.id, numbers: [3], allowFlagged: true });
-  assert.deepEqual(checkApproval({ repoRoot: dir, kind: 'batch-write', target: 'catalog', commit: HEAD }), { ok: true });
+  recordApproval({ repoRoot: dir, packetId: p.id, numbers: [1], allowFlagged: true });
+  assert.equal(checkApproval({ repoRoot: dir, kind: 'deploy-function', target: 'fnA', commit: HEAD }).ok, true);
+});
+
+test('stage 1: batch-write entries cannot be approved even with allowFlagged; check is always ok:false', () => {
+  const { dir, p } = setup();
+  assert.equal(p.entries[2].kind, 'batch-write');
+  assert.throws(() => recordApproval({ repoRoot: dir, packetId: p.id, numbers: [3], allowFlagged: true }), /批次寫入|第二階段/);
+  assert.equal(fs.existsSync(path.join(dir, '.trust/approvals')), false);
+  for (const c of [HEAD, 'plan-hash-123']) {
+    const r = checkApproval({ repoRoot: dir, kind: 'batch-write', target: 'catalog', commit: c });
+    assert.equal(r.ok, false);
+    assert.ok(r.reason.includes('第二階段'), r.reason);
+  }
+  recordApproval({ repoRoot: dir, packetId: p.id, numbers: [1] });
+  assert.deepEqual(checkApproval({ repoRoot: dir, kind: 'deploy-function', target: 'fnA', commit: HEAD }), { ok: true });
+});
+
+test('stage 1: a hand-edited approval record with a batch-write entry is still refused', () => {
+  const dir = makeRepo();
+  fs.mkdirSync(path.join(dir, '.trust/approvals'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.trust/approvals/x.json'), JSON.stringify({ packetId: 'x', entries: [{ n: 1, kind: 'batch-write', target: 'catalog', commit: HEAD }] }));
+  assert.equal(checkApproval({ repoRoot: dir, kind: 'batch-write', target: 'catalog', commit: HEAD }).ok, false);
 });
 
 test('second approval on the same packet keeps earlier entries', () => {
