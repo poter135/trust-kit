@@ -15,6 +15,8 @@ import { buildPacket, writePacket } from '../src/packet.mjs';
 import { recordApproval, checkApproval, ApprovalError } from '../src/approval.mjs';
 import { resolveCommit, mergeBase, defaultBranchRef } from '../src/git.mjs';
 import { displayPath } from '../src/paths.mjs';
+import { runItemGate, gateOk, EXEMPTIONS_DIR } from '../src/item-gate.mjs';
+import { ITEMS_DIR } from '../src/items.mjs';
 
 /** Thrown for bad CLI input; printed without a stack, exit 1 (or `exitCode`). */
 class UsageError extends Error {
@@ -54,6 +56,36 @@ const SUBCOMMANDS = {
       console.error(`red-green: ${report.verdict} (${n} test result(s), base ${report.base.slice(0, 12)}, head ${report.head.slice(0, 12)})`);
       for (const p of report.ruleProblems ?? []) console.error(`  rule ${p.ruleId}: ${p.problem}`);
       return report.verdict === 'head_fail' ? 1 : 0;
+    },
+  },
+  'item-gate': {
+    desc: `a change touching itemGate.productPaths must add/modify a valid ${ITEMS_DIR}/<id>.json or add ${EXEMPTIONS_DIR}/<name>.json { "reason" } (--base <rev> --head <rev> [--out <path>]); config is read from the merge-base; exit 1 only when missing and mode is enforce`,
+    async run(flags) {
+      for (const f of ['base', 'head']) {
+        if (typeof flags[f] !== 'string') throw new UsageError(`item-gate: missing --${f} <rev>`);
+      }
+      const repoRoot = await repoTopLevel(process.cwd());
+      const r = await runItemGate({ repoRoot, base: /** @type {string} */ (flags.base), head: /** @type {string} */ (flags.head) });
+      if (typeof flags.out === 'string') {
+        fs.mkdirSync(path.dirname(path.resolve(flags.out)), { recursive: true });
+        fs.writeFileSync(flags.out, `${JSON.stringify(r, null, 2)}\n`);
+      }
+      const ok = gateOk(r);
+      for (const p of r.problems) console.error(`✗ ${p}`);
+      const lines = {
+        not_configured: 'item-gate: not configured on base (no itemGate in trust.config.json); skipped',
+        no_product_change: 'item-gate: ok, no product paths changed',
+        item: `item-gate: ok, item(s) ${r.items.join(', ')}`,
+        exempt: `item-gate: ok, exempt: ${r.exemptions.map((e) => `${e.file} (${e.reason})`).join('; ')}`,
+        missing: `item-gate: ${r.mode === 'warn' ? 'WARN' : 'FAIL'}, product paths changed (${r.productChanges.slice(0, 5).join(', ')}${r.productChanges.length > 5 ? ', …' : ''}) `
+          + `but no work item was added or modified. Fix: add or update ${ITEMS_DIR}/<id>.json, or, when no item is needed, `
+          + `add ${EXEMPTIONS_DIR}/<name>.json with { "reason": "why no item is needed" }`,
+      };
+      console.error(lines[r.verdict]);
+      if (r.verdict === 'missing' && process.env.GITHUB_ACTIONS === 'true') {
+        console.log(`::${ok ? 'warning' : 'error'}::${lines.missing}`);
+      }
+      return ok ? 0 : 1;
     },
   },
   rules: {

@@ -43,6 +43,16 @@ export function loadItem(repoRoot, id) {
   } catch (e) {
     throw new ItemError(`${shown}: cannot read item (${e.code ?? e.message}). Fix: create ${ITEMS_DIR}/${id}.json`);
   }
+  return validateItem(raw, id, shown);
+}
+
+/**
+ * Validates parsed item JSON (e.g. read from a commit). Throws ItemError naming the file and field.
+ * @param {unknown} raw @param {string} id expected id (the file name without .json) @param {string} shown file label
+ * @returns {Item}
+ */
+export function validateItem(raw, id, shown) {
+  assertItemId(id);
   const fail = (field, problem) => { throw new ItemError(`${shown}: ${field}: ${problem}`); };
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) fail('(root)', 'must be a JSON object');
   if (raw.id !== id) fail('id', `must equal the file name "${id}"`);

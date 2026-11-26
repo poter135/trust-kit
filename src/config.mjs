@@ -4,6 +4,7 @@ import path from 'node:path';
 
 export const CONFIG_FILE = 'trust.config.json';
 export const ADAPTERS = /** @type {const} */ (['flutter', 'jest', 'node-test']);
+export const ITEM_GATE_MODES = /** @type {const} */ (['warn', 'enforce']);
 /** Files that guard trust-kit itself; always protected even if the user omits them. */
 /** `.github/workflows/**`: a workflow decides what CI runs and which artifact it uploads, so changing one can forge evidence. */
 export const ALWAYS_PROTECTED = Object.freeze(['trust.config.json', 'tools/trust-kit.version', '.trust/rules.json', '.github/workflows/**']);
@@ -13,9 +14,12 @@ export const ALWAYS_PROTECTED = Object.freeze(['trust.config.json', 'tools/trust
  *   `setup`: argv arrays run (no shell) in the runner's cwd of each temporary checkout before its tests,
  *   e.g. [["npm", "ci"]] — temporary checkouts have no installed dependencies.
  * @typedef {{ version: 1, runners: RunnerConfig[], protectedPaths: string[], defaultBranch: string,
- *   evidence: { outDir: string, screensDir: string }, ledger: { path: string } }} TrustConfig
+ *   evidence: { outDir: string, screensDir: string }, ledger: { path: string }, itemGate?: ItemGateConfig }} TrustConfig
  *   `defaultBranch` (default "main"): review packets diff from the merge-base of head with this branch
  *   (`origin/<defaultBranch>` when that remote-tracking ref exists, else the local branch).
+ * @typedef {{ productPaths: string[], mode: 'warn'|'enforce' }} ItemGateConfig
+ *   `itemGate` (optional): a change touching `productPaths` (globs) must add or modify a work item
+ *   (`.trust/items/<id>.json`) or add an exemption with a reason; `warn` only reports, `enforce` fails.
  */
 
 export class TrustConfigError extends Error {
@@ -99,6 +103,17 @@ export function parseConfig(text, file) {
   if (!isObj(raw.evidence)) fail('evidence', 'must be an object', 'add "evidence": { "outDir": "...", "screensDir": "..." }');
   if (!isObj(raw.ledger)) fail('ledger', 'must be an object', 'add "ledger": { "path": "..." }');
 
+  /** @type {ItemGateConfig|undefined} */
+  let itemGate;
+  if (raw.itemGate !== undefined) {
+    if (!isObj(raw.itemGate)) fail('itemGate', 'must be an object', 'set "itemGate": { "productPaths": ["src/**"], "mode": "warn" }');
+    const productPaths = strArr(raw.itemGate.productPaths, 'itemGate.productPaths', { nonEmpty: true });
+    if (!ITEM_GATE_MODES.includes(raw.itemGate.mode)) {
+      fail('itemGate.mode', `unknown mode ${JSON.stringify(raw.itemGate.mode)}`, `use one of: ${ITEM_GATE_MODES.join(', ')}`);
+    }
+    itemGate = { productPaths, mode: raw.itemGate.mode };
+  }
+
   const defaultBranch = raw.defaultBranch === undefined ? 'main' : str(raw.defaultBranch, 'defaultBranch');
 
   return {
@@ -108,5 +123,6 @@ export function parseConfig(text, file) {
     defaultBranch,
     evidence: { outDir: str(raw.evidence.outDir, 'evidence.outDir'), screensDir: str(raw.evidence.screensDir, 'evidence.screensDir') },
     ledger: { path: str(raw.ledger.path, 'ledger.path') },
+    ...(itemGate ? { itemGate } : {}),
   };
 }
