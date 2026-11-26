@@ -158,3 +158,15 @@ test('item-gate: invalid itemGate config is a config error naming the field', ()
   assert.equal(r2.status, 1);
   assert.match(r2.stderr, /itemGate\.mode/);
 });
+
+test('item-gate: ignorePaths excludes test files that live under product paths', () => {
+  const { dir, base } = setup({ ...ENFORCE, ignorePaths: ['app/**/*.test.js'] });
+  const head = commit(dir, { 'app/main.test.js': 't\n' });
+  const r = gate(dir, base, head);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.report?.verdict, 'no_product_change');
+  const head2 = commit(dir, { 'app/main.test.js': 't2\n', 'app/main.js': 'v2\n' });
+  const r2 = gate(dir, base, head2);
+  assert.equal(r2.status, 1);
+  assert.deepEqual(r2.report?.productChanges, ['app/main.js']);
+});
