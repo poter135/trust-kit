@@ -36,7 +36,9 @@ export async function runItemGate({ repoRoot, base, head }) {
     verdict: 'not_configured', productChanges: [], items: [], exemptions: [], problems: [] };
   if (!config.itemGate) return report;
 
-  const isProduct = picomatch(config.itemGate.productPaths, { dot: true });
+  const inProduct = picomatch(config.itemGate.productPaths, { dot: true });
+  const ignored = config.itemGate.ignorePaths.length ? picomatch(config.itemGate.ignorePaths, { dot: true }) : () => false;
+  const isProduct = (/** @type {string} */ p) => inProduct(p) && !ignored(p);
   const changes = await diffNameStatus(repoRoot, baseSha, headSha);
   report.productChanges = [...new Set(changes.map((c) => c.path).filter((p) => isProduct(p)))].sort();
   // Only files this change adds or modifies count; a deletion or a file already on base proves nothing about it.

@@ -17,9 +17,10 @@ export const ALWAYS_PROTECTED = Object.freeze(['trust.config.json', 'tools/trust
  *   evidence: { outDir: string, screensDir: string }, ledger: { path: string }, itemGate?: ItemGateConfig }} TrustConfig
  *   `defaultBranch` (default "main"): review packets diff from the merge-base of head with this branch
  *   (`origin/<defaultBranch>` when that remote-tracking ref exists, else the local branch).
- * @typedef {{ productPaths: string[], mode: 'warn'|'enforce' }} ItemGateConfig
+ * @typedef {{ productPaths: string[], ignorePaths: string[], mode: 'warn'|'enforce' }} ItemGateConfig
  *   `itemGate` (optional): a change touching `productPaths` (globs) must add or modify a work item
  *   (`.trust/items/<id>.json`) or add an exemption with a reason; `warn` only reports, `enforce` fails.
+ *   `ignorePaths` (optional): globs that never count as product changes (e.g. tests living under a product path).
  */
 
 export class TrustConfigError extends Error {
@@ -111,7 +112,8 @@ export function parseConfig(text, file) {
     if (!ITEM_GATE_MODES.includes(raw.itemGate.mode)) {
       fail('itemGate.mode', `unknown mode ${JSON.stringify(raw.itemGate.mode)}`, `use one of: ${ITEM_GATE_MODES.join(', ')}`);
     }
-    itemGate = { productPaths, mode: raw.itemGate.mode };
+    const ignorePaths = raw.itemGate.ignorePaths === undefined ? [] : strArr(raw.itemGate.ignorePaths, 'itemGate.ignorePaths');
+    itemGate = { productPaths, ignorePaths, mode: raw.itemGate.mode };
   }
 
   const defaultBranch = raw.defaultBranch === undefined ? 'main' : str(raw.defaultBranch, 'defaultBranch');

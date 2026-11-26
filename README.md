@@ -91,7 +91,7 @@ trust-kit check-approval --kind <deploy-function|hosting|app-release|batch-write
 ```
 
 - `defaultBranch`（可選，預設 `main`）：審查包 base 用的預設分支。
-- `itemGate`（可選）：`{ "productPaths": ["src/**"], "mode": "warn" | "enforce" }`，見上方 item-gate。建議先 `warn` 一段時間觀察誤判再改 `enforce`。
+- `itemGate`（可選）：`{ "productPaths": ["src/**"], "ignorePaths": ["src/**/*.test.js"], "mode": "warn" | "enforce" }`，見上方 item-gate；`ignorePaths`（可選）裡的檔案永遠不算產品改動（例如放在產品資料夾裡的測試）。建議先 `warn` 一段時間觀察誤判再改 `enforce`。
 
 - `adapter`：`flutter`、`jest`、`node-test` 之一；`command`（字串陣列）可選。
 - `setup`（可選）：argv 陣列的陣列，例如 `[["npm", "ci"]]`、`[["flutter", "pub", "get"]]`。暫存 worktree 沒有安裝好的依賴，所以 red-green 會在 base 與 head 兩個 checkout 的 `<checkout>/<cwd>` 依序執行（不經 shell），只對有變更測試的 runner 執行，跑完才跑測試。任一指令失敗＝工具錯誤，訊息含 runner id、base／head、指令與 stderr 結尾。
