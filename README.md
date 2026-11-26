@@ -34,6 +34,18 @@ trust-kit red-green --base <rev> --head <rev> [--out <path>]
    - 或把檢查邏輯寫在測試會呼叫的既有入口（hook、CLI 子指令）後面，base 上入口存在但不攔截 → 斷言失敗。
 3. head 上同一個測試通過，`.trust/rules.json` 的 `check.testName` 要寫這個測試的名稱：規則證據只認該 testName 那一列 `behavior_fail → pass`，同檔其他測試變綠不算。
 
+### item-gate（產品改動必須附項目）
+
+```sh
+trust-kit item-gate --base <rev> --head <rev> [--out <path>]
+```
+
+- merge-base→head 之間有檔案符合 `trust.config.json` 的 `itemGate.productPaths`，就必須**新增或修改**至少一個合法的 `.trust/items/<id>.json`（格式同項目檔；刪除、壞掉的項目檔不算），否則判定 `missing`。
+- 不需要項目的產品改動（例如只改註解、搬檔），改為新增或修改 `.trust/exemptions/<名稱>.json`：`{ "reason": "為什麼不需要項目" }`，理由去空白後至少 10 個字。base 上已經有的豁免檔不算（每次改動都要寫自己的理由）。豁免理由會寫進報告與 CI summary。
+- **設定從 merge-base 讀**，不讀這次改動本身：PR 不能替自己移除 `itemGate` 或把 `enforce` 改成 `warn`；新加的設定合併後才生效。base 沒有 `itemGate` → `not_configured`。
+- 判定：`not_configured`、`no_product_change`、`item`、`exempt`、`missing`。`--out` 寫 JSON 報告（`trust-kit/item-gate@1`）。只有 `missing` 且 `mode: "enforce"` 時 exit 1；`warn` 仍 exit 0。在 GitHub Actions 裡 `missing` 會輸出 `::warning::`（warn）或 `::error::`（enforce）註記。
+- reusable workflow 先跑輕量的 `item-gate` job（不裝 Flutter／專案依賴），不合格時重的 `red-green` job 直接跳過。base 的 trust-kit 版本早於 0.5.0（沒有 item-gate）時略過並在 summary 註明。
+
 ### evidence（證據包）
 
 ```sh
@@ -79,6 +91,7 @@ trust-kit check-approval --kind <deploy-function|hosting|app-release|batch-write
 ```
 
 - `defaultBranch`（可選，預設 `main`）：審查包 base 用的預設分支。
+- `itemGate`（可選）：`{ "productPaths": ["src/**"], "ignorePaths": ["src/**/*.test.js"], "mode": "warn" | "enforce" }`，見上方 item-gate；`ignorePaths`（可選）裡的檔案永遠不算產品改動（例如放在產品資料夾裡的測試）。建議先 `warn` 一段時間觀察誤判再改 `enforce`。
 
 - `adapter`：`flutter`、`jest`、`node-test` 之一；`command`（字串陣列）可選。
 - `setup`（可選）：argv 陣列的陣列，例如 `[["npm", "ci"]]`、`[["flutter", "pub", "get"]]`。暫存 worktree 沒有安裝好的依賴，所以 red-green 會在 base 與 head 兩個 checkout 的 `<checkout>/<cwd>` 依序執行（不經 shell），只對有變更測試的 runner 執行，跑完才跑測試。任一指令失敗＝工具錯誤，訊息含 runner id、base／head、指令與 stderr 結尾。
@@ -94,6 +107,11 @@ trust-kit check-approval --kind <deploy-function|hosting|app-release|batch-write
 npm install
 npm test
 ```
+
+## 升級到 0.5.0
+
+- 新增 `item-gate` 子指令與 `itemGate` 設定（可選，沒設定就不檢查）。
+- reusable workflow 改為兩個 job：`item-gate` → `red-green`（`needs`）。呼叫端把 `red-green.yml@v0.5.0` 與 `tools/trust-kit.version` 一起升級；版本仍由 base 決定，所以 item-gate 在升級合併後的下一個 PR 才開始判定。
 
 ## 升級到 0.4.0（不相容變更）
 

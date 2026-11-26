@@ -2,12 +2,14 @@
 # Caller:
 #   jobs:
 #     red-green:
-#       uses: poter135/trust-kit/.github/workflows/red-green.yml@v0.4.0
+#       uses: poter135/trust-kit/.github/workflows/red-green.yml@v0.5.0
 #       with:
 #         setup-command: npm ci --prefix functions
 # The trust-kit version that judges the PR is read from tools/trust-kit.version at the PR's BASE commit
 # (a tag or commit of poter135/trust-kit). If base has no such file (first adoption), the commit of this
 # reusable workflow (job.workflow_sha) is used.
+# Jobs: item-gate (cheap; product changes need a work item, see trust-kit README) → red-green (skipped when
+# item-gate fails).
 name: trust-kit red-green
 
 on:
@@ -30,8 +32,13 @@ permissions:
   contents: read
 
 jobs:
-  red-green:
+  # Cheap first job: picks the trust-kit version (from base) and runs item-gate. When item-gate fails (mode
+  # enforce), the expensive red-green job is skipped. The gate's config is read from base too.
+  item-gate:
     runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.version.outputs.ref }}
+      notes: ${{ steps.version.outputs.notes }}
     steps:
       - name: Require a pull_request event
         if: github.event_name != 'pull_request'
@@ -39,10 +46,11 @@ jobs:
           echo "::error::trust-kit red-green needs a pull_request event (got ${GITHUB_EVENT_NAME})"
           exit 1
 
-      - name: Check out caller
+      - name: Check out caller (history only; file contents are fetched on demand)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          filter: blob:none
 
       # The judge is chosen by the PR's BASE commit, never by the PR itself: a PR that edits
       # tools/trust-kit.version cannot pick its own trust-kit. A version change only takes effect after merge.
@@ -55,7 +63,7 @@ jobs:
         run: |
           f=tools/trust-kit.version
           valid() { [[ "$1" =~ ^[A-Za-z0-9._/-]+$ ]]; }
-          : > trust-version-notes.txt
+          notes=""
           if base_raw="$(git show "$BASE_SHA:$f" 2>/dev/null)"; then
             ref="$(printf '%s' "$base_raw" | tr -d '[:space:]')"
             if [ -z "$ref" ]; then echo "::error file=$f::$f is empty on base $BASE_SHA"; exit 1; fi
@@ -67,17 +75,85 @@ jobs:
               head_ref="(deleted)"
             fi
             if [ "$head_ref" != "$ref" ]; then
-              echo "trust-kit 版本變更：${ref} → ${head_ref}（本次以 base 版本判定）" >> trust-version-notes.txt
+              notes="trust-kit 版本變更：${ref} → ${head_ref}（本次以 base 版本判定）"
             fi
           else
             if [ -z "$WORKFLOW_SHA" ] || ! valid "$WORKFLOW_SHA"; then
               echo "::error::$f does not exist on base $BASE_SHA and job.workflow_sha is unavailable; cannot choose a trust-kit version"; exit 1
             fi
             ref="$WORKFLOW_SHA"
-            echo "首次接入：以 workflow 版本執行（${ref}）" >> trust-version-notes.txt
+            notes="首次接入：以 workflow 版本執行（${ref}）"
           fi
           echo "trust-kit ref: $ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "notes=$notes" >> "$GITHUB_OUTPUT"
+
+      - name: Check out trust-kit
+        uses: actions/checkout@v4
+        with:
+          repository: poter135/trust-kit
+          ref: ${{ steps.version.outputs.ref }}
+          path: .trust-kit
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: item-gate
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # A base trust-kit older than item-gate (before 0.5.0) cannot judge it: skip with a note.
+          if [ ! -f .trust-kit/src/item-gate.mjs ]; then
+            echo "item-gate: base trust-kit (${{ steps.version.outputs.ref }}) has no item-gate; skipped"
+            printf '## trust-kit item-gate\n\n（base 的 trust-kit 版本沒有 item-gate，略過）\n' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          npm ci --prefix .trust-kit
+          set +e
+          node .trust-kit/bin/trust-kit.mjs item-gate --base "$BASE_SHA" --head "$HEAD_SHA" --out item-gate.json
+          code=$?
+          set -e
+          node --input-type=module - <<'EOF2' >> "$GITHUB_STEP_SUMMARY"
+          import fs from 'node:fs';
+          let r = null;
+          try { r = JSON.parse(fs.readFileSync('item-gate.json', 'utf8')); } catch { r = null; }
+          const out = ['## trust-kit item-gate', ''];
+          if (!r) out.push('**verdict:** (no report — item-gate errored; see the step log)');
+          else {
+            out.push(`**verdict:** \`${r.verdict}\`${r.mode ? `（mode \`${r.mode}\`）` : ''}`);
+            if (r.items.length) out.push('', `項目：${r.items.map((i) => `\`${i}\``).join(', ')}`);
+            for (const e of r.exemptions) out.push('', `豁免 \`${e.file}\`：${e.reason}`);
+            if (r.verdict === 'missing') {
+              out.push('', '改到產品路徑卻沒有新增或修改項目檔：', ...r.productChanges.slice(0, 20).map((p) => `- \`${p}\``));
+              out.push('', '修正：新增或更新 `.trust/items/<id>.json`；不需要項目時新增 `.trust/exemptions/<name>.json`（`{ "reason": "為什麼不需要項目" }`）。');
+            }
+            for (const p of r.problems) out.push('', `✗ ${p}`);
+          }
+          console.log(out.join('\n'));
+          EOF2
+          exit $code
+
+  red-green:
+    needs: item-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out caller
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read trust-kit version (from item-gate job)
+        id: version
+        env:
+          REF: ${{ needs.item-gate.outputs.ref }}
+          NOTES: ${{ needs.item-gate.outputs.notes }}
+        run: |
+          printf '%s\n' "$NOTES" | sed '/^$/d' > trust-version-notes.txt
+          echo "trust-kit ref: $REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
 
       - name: Check out trust-kit
         uses: actions/checkout@v4
